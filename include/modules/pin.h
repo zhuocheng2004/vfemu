@@ -6,12 +6,33 @@
 #include <vfemu/Connector.h>
 
 
-#define NAME_PIN8	"pin8"
+namespace vfemu {
+
+namespace pin {
 
 
-extern vfemu::VFEMUPortType pin8;
+#define PIN8 "pin8"
 
-extern vfemu::VFEMUConnector pin2pin;
+
+class Pin8 : public PortType {
+public:
+	Pin8() : PortType(PIN8) { }
+};
+
+
+class Pin2pin : public Connector {
+public:
+	static Status connect(Port* port1, Port* port2);
+
+	static Status disconnect(Port* port1, Port* port2);
+private:
+	static bool arePortsValid(Port* port1, Port* port2);
+};
+
+
+} // namespace pin
+
+} // namespace vfemu
 
 
 #endif /* VFEMU_MODULES_PIN_H */

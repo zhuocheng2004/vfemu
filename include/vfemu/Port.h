@@ -3,8 +3,10 @@
 #define VFEMU_PORT_H
 
 #include <vfemu/types.h>
+#include <vfemu/Registry.h>
 
 namespace vfemu {
+
 
 struct vfemu_module;
 
@@ -13,30 +15,25 @@ struct vfemu_module;
  * A Port Type specifies how data will be dealt and transferred
  * between two modules.
  */
-typedef struct {
+class PortType {
+public:
 	/**
 	 * name of this port type
 	 */
-	const char*		name;
-} VFEMUPortType;
+	const char*			name;
 
+	static Registry<PortType>	registry;
 
-/**
- * retrieve a port type given its name
- */
-extern VFEMUPortType* getPortType(const char* name);
+	inline PortType(const char *name) : name(name) { }
+};
 
-/*
- * [un]register a port type 
- */
-extern VFEMUStatus registerPortType(VFEMUPortType* portType);
-extern VFEMUStatus unregisterPortType(VFEMUPortType* portType);
-
+class Module;
 
 /**
  * A port instance of a module 
  */
-typedef struct {
+class Port {
+public:
 	/**
 	 * unique identifier of the port
 	 */
@@ -51,32 +48,35 @@ typedef struct {
 	 * Another module will call this method
 	 * to send data to this module
 	 */
-	VFEMUStatus	(*receive)(struct vfemu_module* from, struct vfemu_module* to, void* data);
+	Status		(*receive)(Module& from, Module& to, void* data);
 
 	/**
 	 * This method needs to be set to NULL 
 	 * during init. It will be filled during the
 	 * matching process.
 	 */
-	VFEMUStatus	(*send)(struct vfemu_module* from, struct vfemu_module* to, void* data);
+	Status		(*send)(Module& from, Module& to, void* data);
 
 	/**
 	 * Parent module instance the port belongs to
 	 * It will be set during module instance init process.
 	 */
-	struct vfemu_module*	module;
+	Module*		module;
 
 	/**
 	 * Destination module instance of the port.
 	 * It will be set during matching process.
 	 */
-	struct vfemu_module*	dest;
+	Module*		dest;
 
 	/**
-	 * Additional private data.
+	 * constructor
 	 */
-	void		*data;
-} VFEMUPort;
+	inline Port(const char* id, const char* type, 
+		Status (*receive)(Module&, Module&, void*) = nullptr) 
+		: id(id), type(type), receive(receive) { }
+};
+
 
 } // namespace vfemu
 

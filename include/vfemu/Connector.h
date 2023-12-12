@@ -4,6 +4,7 @@
 
 
 #include <vfemu/types.h>
+#include <vfemu/Registry.h>
 #include <vfemu/Port.h>
 
 
@@ -12,31 +13,28 @@ namespace vfemu {
 /**
  * A connector defines how two ports should be connected
  */
-typedef struct {
+class Connector {
+public:
 	/**
 	 * name of the connector
 	 */
-	const char*	name;
+	const char*		name;
+
+	static Registry<Connector>	registry;
 
 	/**
 	 * method to connect two ports
 	 */
-	VFEMUStatus	(*connect)(VFEMUPort* port1, VFEMUPort* port2);
+	static Status		connect(Port* port1, Port* port2);
 
 	/**
 	 * method to disconnect two ports
 	 */
-	VFEMUStatus	(*disconnect)(VFEMUPort* port1, VFEMUPort* port2);
-} VFEMUConnector;
+	static Status		disconnect(Port* port1, Port* port2);
 
-
-extern VFEMUConnector* getConnector(const char* name);
-
-extern VFEMUStatus registerConnector(VFEMUConnector* connector);
-extern VFEMUStatus unregisterConnector(VFEMUConnector* connector);
-
-extern VFEMUStatus connectPort(const char* connectorName, VFEMUPort* port1, VFEMUPort* port2);
-extern VFEMUStatus disconnectPort(const char* connectorName, VFEMUPort* port1, VFEMUPort* port2);
+	static Status		connectPort(const char* connectorName, Port* port1, Port* port2);
+	static Status		disconnectPort(const char* connectorName, Port* port1, Port* port2);
+};
 
 
 } // namespace vfemu

@@ -6,7 +6,13 @@
 #include <vfemu/types.h>
 
 
-const u32 VFEMU_VERSION = AS_VFEMU_VERSION(0x00, 0x00, 0x01);
+namespace vfemu {
+
+
+const u32 VERSION = AS_VFEMU_VERSION(0x00, 0x00, 0x02);
+
+
+}
 
 
 #endif /* VFEMU_CONSTANT_H */

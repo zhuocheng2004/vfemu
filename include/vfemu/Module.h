@@ -2,62 +2,95 @@
 #ifndef VFEMU_MODULE_H
 #define VFEMU_MODULE_H
 
+#include <vector>
+#include <vfemu/constants.h>
 #include <vfemu/types.h>
+#include <vfemu/Registry.h>
 #include <vfemu/Port.h>
 
 
 namespace vfemu {
 
+
+class ModuleConfig {
+};
+
+
 /**
  * A Module is a reusable component.
- * This struct contains the meta information,
- * but can also serves as module instances.
  */
-typedef struct vfemu_module {
-	/* ================================
-	 * Header
-	 * This will never change in the future.
-	 */
-
-	/**
-	 * minimum vfemu version to load this module
-	 */
-	u32		min_sdk_version;
-
-	/**
-	 * vfemu version the module targets to
-	 * You can just set it to the VFEMU_VERSION constant.
-	 */
-	u32		target_sdk_version;
-
-	/**
-	 * name of the module
-	 */
-	const char*		name;
-
-	// Header End
-
+class Module {
+public:
 	/* ================================
 	 * Module method
 	 */
+	Module(const int num_ports, const std::vector<Port> ports);
 
 	/**
 	 * This will be called when an instance
 	 * of this module is plugged in.
 	 */
-	VFEMUStatus	(*init)(struct vfemu_module* module, void* config);
+	Status				init(void);
 
 	/**
 	 * This will be called when an instance 
 	 * of this module disconnects.
 	 */
-	VFEMUStatus	(*exit)(struct vfemu_module* module);
+	Status				exit(void);
+	
+	inline Port& getPort(int index) {
+		return ports[index];
+	}
+
+protected:
+	/* ================================
+	 * Module port info
+	 */
 
 	/**
-	 * copy module data
-	 * this will be called when instanciating.
+	 * number of ports
 	 */
-	VFEMUStatus	(*copy)(struct vfemu_module* to, struct vfemu_module* from);
+	const int			num_ports;
+
+	/**
+	 * the list of ports
+	 */
+	std::vector<Port>		ports;
+};
+
+
+/**
+ * This struct contains the meta information 
+ * of a type of module.
+ */
+class ModuleType {
+	friend Module;
+public:
+	/* ================================
+	 * Header
+	 * Memory layout of this will never change in the future.
+	 */
+
+	/**
+	 * minimum vfemu version to load this module
+	 * Registration will fail if not compatible.
+	 */
+	const u32			min_vfemu_version;
+
+	/**
+	 * vfemu version the module targets to
+	 * You can just set it to the VFEMU_VERSION constant.
+	 */
+	const u32			target_vfemu_version;
+
+	/**
+	 * name of the module
+	 */
+	const char*			name;
+
+	/*
+	 * Header end
+	 */
 
 	/* ================================
 	 * Module port info
@@ -66,33 +99,29 @@ typedef struct vfemu_module {
 	/**
 	 * number of ports
 	 */
-	int		num_ports;
+	const int			num_ports;
 
 	/**
-	 * the list of ports
+	 * the list of port definitions
 	 */
-	VFEMUPort*	ports;
+	std::vector<Port>		ports;
+
+	static Registry<ModuleType>	registry;
+
+
+	/* ================================
+	 * Module Type method
+	 */
+	inline ModuleType(const char* name, const int num_ports, const std::vector<Port> ports) 
+		: min_vfemu_version(vfemu::VERSION), target_vfemu_version(vfemu::VERSION),
+		 name(name), num_ports(num_ports), ports(ports) { }
 
 	/**
-	 * Additional private data.
+	 * method to create module instance
 	 */
-	void*		data;
-} VFEMUModule;
+	virtual Module*			create(ModuleConfig* config) = 0;
+}; // ModuleType
 
-
-/**
- * retrieve a module prototype given its name
- */
-extern VFEMUModule* getModule(const char* name);
-
-/*
- * [un]register a module prototype
- */
-extern VFEMUStatus registerModule(VFEMUModule* module);
-extern VFEMUStatus unregisterModule(VFEMUModule* module);
-
-
-extern VFEMUStatus simple_copy(VFEMUModule* to, VFEMUModule* from);
 
 } // namespace vfemu
 

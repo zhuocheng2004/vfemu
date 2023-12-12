@@ -1,10 +1,11 @@
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 #include <vfemu/Module.h>
 
 #include <modules/pin.h>
-#include <modules/tst001.h>
+#include <modules/gen.h>
 #include <modules/char1.h>
 
 using namespace std::chrono_literals;
@@ -12,26 +13,24 @@ using namespace vfemu;
 
 
 int main() {
-	registerPortType(&pin8);
-	registerConnector(&pin2pin);
-	registerModule(&char1_out_module);
-	registerModule(&char1_gen_module);
+	auto pin8 = pin::Pin8();
+	auto pin2pin = pin::Pin2pin();
+	auto gen8 = gen::Gen8ModuleType();
+	auto char1out = char1::Char1OutModuleType();
 
-	char1_gen_config config = {
-		.ch =		'#',
-		.interval =	250ms,
-	};
+	gen::U8Controller *controller;
 
-	VFEMUModule gen = VFEMUModule();
-	VFEMUModule out = VFEMUModule();
-	char1_gen_module.copy(&gen, &char1_gen_module);
-	char1_out_module.copy(&out, &char1_out_module);
-	char1_gen_module.init(&gen, &config);
-	char1_out_module.init(&out, nullptr);
-	pin2pin.connect(&gen.ports[0], &out.ports[0]);
+	auto gen = gen8.create(nullptr);
+	auto out = char1out.create(nullptr);
+	gen->init(&controller);
+	out->init();
+	pin2pin.connect(&gen->getPort(0), &out->getPort(0));
 
 	do {
-		std::this_thread::sleep_for(1000ms);
+		controller->send('-');
+		std::this_thread::sleep_for(150ms);
+		controller->send('#');
+		std::this_thread::sleep_for(500ms);
 	} while (true);
 
 	return 0;

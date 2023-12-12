@@ -2,6 +2,7 @@
 #ifndef VFEMU_TYPES_H
 #define VFEMU_TYPES_H
 
+#include <string>
 #include <vfemu/macros.h>
 
 
@@ -10,6 +11,8 @@ typedef unsigned short		u16;
 typedef unsigned int		u32;
 typedef unsigned long long	u64;
 
+
+namespace vfemu {
 
 typedef enum {
 	/**
@@ -46,6 +49,8 @@ typedef enum {
 	 * Target doesn't exist.
 	 */
 	ERR_NONEXIST,
-} VFEMUStatus;
+} Status;
+
+}
 
 #endif /* VFEMU_TYPES_H */

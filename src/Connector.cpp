@@ -7,54 +7,42 @@ namespace vfemu {
 /**
  * list of registered connectors
  */
-static std::list<VFEMUConnector*> connectors;
+static std::list<Connector*> connectors;
 
 
-VFEMUConnector* getConnector(const char* name) {
-	for (auto connector : connectors) {
-		if (connector->name == name) {
-			return connector;
-		}
-	}
-	return nullptr;
+Registry<Connector> Connector::registry;
+
+
+Status Connector::connect(Port* port1, Port* port2) {
+	return Status::SUCCESS;
 }
 
-VFEMUStatus registerConnector(VFEMUConnector* connector) {
-	for (auto _connector : connectors) {
-		if (_connector->name == connector->name) {
-			return ERR_EXIST;
-		}
-	}
-	connectors.push_front(connector);
-	return SUCCESS;
-}
-
-VFEMUStatus unregisterConnector(VFEMUConnector* connector) {
-	connectors.remove(connector);
-	return SUCCESS;
+Status Connector::disconnect(Port* port1, Port* port2) {
+	return Status::SUCCESS;
 }
 
 
-VFEMUStatus connectPort(const char* connectorName, VFEMUPort* port1, VFEMUPort* port2) {
-	auto connector = getConnector(connectorName);
+Status Connector::connectPort(const char* connectorName, Port* port1, Port* port2) {
+	auto connector = Connector::registry.get(connectorName);
 	if (!connector) {
-		return ERR_NONEXIST;
+		return Status::ERR_NONEXIST;
 	}
 	if (!connector->connect) {
-		return ERR_NULL;
+		return Status::ERR_NULL;
 	}
 	return connector->connect(port1, port2);
 }
 
-VFEMUStatus disconnectPort(const char* connectorName, VFEMUPort* port1, VFEMUPort* port2) {
-	auto connector = getConnector(connectorName);
+Status Connector::disconnectPort(const char* connectorName, Port* port1, Port* port2) {
+	auto connector = Connector::registry.get(connectorName);
 	if (!connector) {
-		return ERR_NONEXIST;
+		return Status::ERR_NONEXIST;
 	}
 	if (!connector->disconnect) {
-		return ERR_NULL;
+		return Status::ERR_NULL;
 	}
 	return connector->disconnect(port1, port2);
 }
+
 
 }
