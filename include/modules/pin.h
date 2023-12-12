@@ -19,12 +19,22 @@ public:
 	Pin8() : PortType(PIN8) { }
 };
 
-
-class Pin2pin : public Connector {
+class Pin2pinConnector : public Connector {
 public:
-	static Status connect(Port* port1, Port* port2);
+	inline Pin2pinConnector(Port* dest) : dest(dest) { }
 
-	static Status disconnect(Port* port1, Port* port2);
+	inline virtual Status send(void* data) {
+		dest->receive(data);
+		return Status::SUCCESS;
+	}
+private:
+	Port* dest;
+};
+
+class Pin2pin : public ConnectorType {
+public:
+	virtual Status connect(Port* port1, Port* port2);
+	virtual Status disconnect(Port* port1, Port* port2);
 private:
 	static bool arePortsValid(Port* port1, Port* port2);
 };

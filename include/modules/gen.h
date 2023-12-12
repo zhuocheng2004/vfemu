@@ -32,10 +32,10 @@ extern const std::vector<Port> gen8_ports;
 
 class Gen8Module : public Module {
 public:
-	Gen8Module(const int num_ports, const std::vector<Port> ports)
-		: Module(num_ports, ports) { }
+	inline Gen8Module(const std::vector<Port> ports)
+		: Module(ports) { }
 
-	Status init(U8Controller** controller) {
+	inline Status init(U8Controller** controller) {
 		*controller = new U8Controller(this);
 		return Status::SUCCESS;
 	}
@@ -48,10 +48,10 @@ class Gen8ModuleType : public ModuleType {
  *	out: pin8
  */
 public:
-	Gen8ModuleType() : ModuleType(GEN8, 1, gen8_ports) { }
+	inline Gen8ModuleType() : ModuleType(GEN8, 1, gen8_ports) { }
 
-	Gen8Module* create(ModuleConfig* config) {
-		return new Gen8Module(num_ports, ports);
+	inline Gen8Module* create() {
+		return new Gen8Module(ports);
 	}
 };
 

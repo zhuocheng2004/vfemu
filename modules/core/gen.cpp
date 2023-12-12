@@ -13,8 +13,8 @@ const std::vector<Port> gen8_ports = {
 
 void U8Controller::send(const u8 data) {
 	Port port = module->getPort(0);
-	if (port.send) {
-		port.send(*module, *port.dest, (void *) (unsigned long) data);
+	if (port.connector) {
+		port.connector->send((void *) (unsigned long) data);
 	}
 }
 

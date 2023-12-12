@@ -8,9 +8,6 @@
 namespace vfemu {
 
 
-struct vfemu_module;
-
-
 /**
  * A Port Type specifies how data will be dealt and transferred
  * between two modules.
@@ -27,7 +24,9 @@ public:
 	inline PortType(const char *name) : name(name) { }
 };
 
-class Module;
+
+class Connector;
+
 
 /**
  * A port instance of a module 
@@ -48,33 +47,19 @@ public:
 	 * Another module will call this method
 	 * to send data to this module
 	 */
-	Status		(*receive)(Module& from, Module& to, void* data);
+	Status		(*receive)(void* data);
 
 	/**
-	 * This method needs to be set to NULL 
-	 * during init. It will be filled during the
-	 * matching process.
+	 * the connector instance that this port connects to
 	 */
-	Status		(*send)(Module& from, Module& to, void* data);
-
-	/**
-	 * Parent module instance the port belongs to
-	 * It will be set during module instance init process.
-	 */
-	Module*		module;
-
-	/**
-	 * Destination module instance of the port.
-	 * It will be set during matching process.
-	 */
-	Module*		dest;
+	Connector*	connector;
 
 	/**
 	 * constructor
 	 */
 	inline Port(const char* id, const char* type, 
-		Status (*receive)(Module&, Module&, void*) = nullptr) 
-		: id(id), type(type), receive(receive) { }
+		Status (*receive)(void*) = nullptr) 
+		: id(id), type(type), receive(receive), connector(nullptr) { }
 };
 
 

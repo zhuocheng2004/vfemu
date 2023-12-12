@@ -7,9 +7,9 @@ namespace vfemu {
 
 Registry<ModuleType> ModuleType::registry;
 
-Module::Module(const int num_ports, const std::vector<Port> ports) 
-	: num_ports(num_ports) {
+Module::Module(const std::vector<Port> ports) {
 	for (auto port : ports) {
+		// copy operator invoked here
 		this->ports.push_back(port);
 	}
 }
@@ -23,5 +23,13 @@ Status Module::exit(void) {
 	return Status::SUCCESS;
 }
 
+Port* Module::getPort(const char* id) {
+	for (auto& port : ports) {
+		if (strcmp(id, port.id) == 0) {
+			return &port;
+		}
+	}
+	return nullptr;
+}
 
 }

@@ -1,8 +1,6 @@
 
 #include <chrono>
 #include <iostream>
-#include <thread>
-#include <vfemu/Module.h>
 
 #include <modules/pin.h>
 #include <modules/gen.h>
@@ -17,19 +15,28 @@ int main() {
 	auto pin2pin = pin::Pin2pin();
 	auto gen8 = gen::Gen8ModuleType();
 	auto char1out = char1::Char1OutModuleType();
+	auto char1gen = char1::Char1GenModuleType();
 
-	gen::U8Controller *controller;
-
-	auto gen = gen8.create(nullptr);
-	auto out = char1out.create(nullptr);
-	gen->init(&controller);
+	auto gen = char1gen.create({
+		.ch = 'A',
+		.interval = 100ms,
+	});
+	auto out = char1out.create();
+	gen->init();
 	out->init();
-	pin2pin.connect(&gen->getPort(0), &out->getPort(0));
+
+	auto gen2 = char1gen.create({
+		.ch = 'B',
+		.interval = 500ms,
+	});
+	auto out2 = char1out.create();
+	gen2->init();
+	out2->init();
+
+	pin2pin.ConnectorType::connect(gen, "out", out, "in");
+	pin2pin.ConnectorType::connect(gen2, "out", out2, "in");
 
 	do {
-		controller->send('-');
-		std::this_thread::sleep_for(150ms);
-		controller->send('#');
 		std::this_thread::sleep_for(500ms);
 	} while (true);
 

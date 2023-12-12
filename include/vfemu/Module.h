@@ -12,10 +12,6 @@
 namespace vfemu {
 
 
-class ModuleConfig {
-};
-
-
 /**
  * A Module is a reusable component.
  */
@@ -24,33 +20,30 @@ public:
 	/* ================================
 	 * Module method
 	 */
-	Module(const int num_ports, const std::vector<Port> ports);
+	Module(const std::vector<Port> ports);
 
 	/**
 	 * This will be called when an instance
 	 * of this module is plugged in.
 	 */
-	Status				init(void);
+	virtual Status			init(void);
 
 	/**
 	 * This will be called when an instance 
 	 * of this module disconnects.
 	 */
-	Status				exit(void);
+	virtual Status			exit(void);
 	
 	inline Port& getPort(int index) {
 		return ports[index];
 	}
 
+	Port* getPort(const char* id);
+
 protected:
 	/* ================================
 	 * Module port info
 	 */
-
-	/**
-	 * number of ports
-	 */
-	const int			num_ports;
 
 	/**
 	 * the list of ports
@@ -97,11 +90,6 @@ public:
 	 */
 
 	/**
-	 * number of ports
-	 */
-	const int			num_ports;
-
-	/**
 	 * the list of port definitions
 	 */
 	std::vector<Port>		ports;
@@ -114,12 +102,14 @@ public:
 	 */
 	inline ModuleType(const char* name, const int num_ports, const std::vector<Port> ports) 
 		: min_vfemu_version(vfemu::VERSION), target_vfemu_version(vfemu::VERSION),
-		 name(name), num_ports(num_ports), ports(ports) { }
+		 name(name), ports(ports) { }
 
 	/**
 	 * method to create module instance
 	 */
-	virtual Module*			create(ModuleConfig* config) = 0;
+	inline virtual Module*		create() {
+		return nullptr;
+	}
 }; // ModuleType
 
 

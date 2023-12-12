@@ -1,5 +1,6 @@
 
 #include <cstring>
+#include <iostream>
 #include <modules/pin.h>
 
 namespace vfemu {
@@ -12,13 +13,15 @@ bool Pin2pin::arePortsValid(Port* port1, Port* port2) {
 }
 
 Status Pin2pin::connect(Port* port1, Port* port2) {
+	if (!port1 || !port2) {
+		return Status::ERR_NULL;
+	}
 	if (!arePortsValid(port1, port2)) {
 		return Status::ERR_INVALID;
 	}
-	port1->send = port2->receive;
-	port1->dest = port2->module;
-	port2->send = port1->receive;
-	port2->dest = port1->module;
+
+	port1->connector = new Pin2pinConnector(port2);
+	port2->connector = new Pin2pinConnector(port1);
 	return Status::SUCCESS;
 }
 
@@ -26,10 +29,17 @@ Status Pin2pin::disconnect(Port* port1, Port* port2) {
 	if (!arePortsValid(port1, port2)) {
 		return Status::ERR_INVALID;
 	}
-	port1->send = nullptr;
-	port1->dest = nullptr;
-	port2->send = nullptr;
-	port2->dest = nullptr;
+	
+	if (port1) {
+		delete port1->connector;
+	}
+	if (port2) {
+		delete port2->connector;
+	}
+
+	if (!port1 || !port2) {
+		return Status::ERR_NULL;
+	}
 	return Status::SUCCESS;
 }
 
