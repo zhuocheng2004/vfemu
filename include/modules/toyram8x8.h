@@ -21,49 +21,35 @@ namespace vfemu {
 namespace toyram {
 
 
-#define TOYRAM8X8 "toyram8x8"
-
-
 class ToyRAM8x8Module : public Module {
 public:
-	inline ToyRAM8x8Module(const std::vector<Port> ports,
-		const char* initial_mem, 
-		const unsigned int initial_mem_size)
-		: Module(ports), initial_mem(initial_mem), initial_mem_size(initial_mem_size) { }
+	inline ToyRAM8x8Module(const char* initial_mem, const unsigned int initial_mem_size)
+		: Module({
+			Port("load",  "pin1", ToyRAM8x8Module::load_receive),
+			Port("store", "pin1", ToyRAM8x8Module::store_receive),
+			Port("addr",  "pin8", ToyRAM8x8Module::addr_receive),
+			Port("data",  "pin8", ToyRAM8x8Module::data_receive),
+		}), initial_mem(initial_mem), initial_mem_size(initial_mem_size) { }
+	
+	inline ToyRAM8x8Module() : ToyRAM8x8Module(nullptr, 0) { }
 
 	Status init();
 
 	Status exit();
 
+private:
+	u8*	mem = nullptr;
+	u8	addr = 0;
+	u8	data = 0;
+
+	const char*		initial_mem;
+	const unsigned int 	initial_mem_size;
+
 	static Status load_receive(Module* receiver, void* data);
 	static Status store_receive(Module* receiver, void* data);
 	static Status addr_receive(Module* receiver, void* data);
 	static Status data_receive(Module* receiver, void* data);
-private:
-	u8*	mem;
-	u8	addr;
-	u8	data;
-
-	const char*		initial_mem;
-	const unsigned int 	initial_mem_size;
 };
-
-
-class ToyRAM8x8ModuleType : public ModuleType {
-public:
-	static std::vector<Port> toyram8x8_ports;
-
-	inline ToyRAM8x8ModuleType() : ModuleType(TOYRAM8X8, toyram8x8_ports) { }
-
-	inline ToyRAM8x8Module* create(const char* initial_mem, const unsigned int initial_mem_size) {
-		return new ToyRAM8x8Module(ports, initial_mem, initial_mem_size);
-	}
-
-	inline ToyRAM8x8Module* create() {
-		return new ToyRAM8x8Module(ports, nullptr, 0);
-	}
-};
-
 
 
 } // namespace toyram

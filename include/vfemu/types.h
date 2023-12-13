@@ -3,7 +3,6 @@
 #define VFEMU_TYPES_H
 
 #include <string>
-#include <vfemu/macros.h>
 
 
 typedef unsigned char		u8;
@@ -13,6 +12,7 @@ typedef unsigned long long	u64;
 
 
 namespace vfemu {
+
 
 typedef enum {
 	/**
@@ -56,6 +56,7 @@ typedef enum {
 	ERR_NOMEM,
 } Status;
 
-}
+
+} // namespace vfemu
 
 #endif /* VFEMU_TYPES_H */

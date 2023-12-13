@@ -12,23 +12,11 @@ namespace vfemu {
 namespace char1 {
 
 
-
-std::vector<Port> Char1OutModuleType::char1_out_ports = {
-	Port("in", "pin8", Char1OutModule::out_receive)
-};
-
-
 Status Char1OutModule::out_receive(Module* receiver, void* data) {
 	u8 received = ((unsigned long) data & 0xff);
 	std::cout << (char) received << std::flush;
 	return SUCCESS;
 }
-
-
-std::vector<Port> CChar1OutModuleType::cchar1_out_ports = {
-	Port("in", "pin8", CChar1OutModule::out_receive),
-	Port("ctrl", "pin1", CChar1OutModule::ctrl_receive),
-};
 
 
 Status CChar1OutModule::out_receive(Module* receiver, void* data) {
@@ -46,10 +34,6 @@ Status CChar1OutModule::ctrl_receive(Module* receiver, void* data) {
 }
 
 
-std::vector<Port> Char1GenModuleType::char1_gen_ports =  {
-	Port("out", "pin8")
-};
-
 void Char1GenModule::char1_gen_thread(Char1GenModule* module) {
 	auto ch = module->ch;
 	auto interval = module->interval;
@@ -64,7 +48,7 @@ void Char1GenModule::char1_gen_thread(Char1GenModule* module) {
 
 Status Char1GenModule::init() {
 	running = true;
-	thread = new std::thread(Char1GenModule::char1_gen_thread, this);
+	thread = new std::thread(char1_gen_thread, this);
 	return SUCCESS;
 }
 

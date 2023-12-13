@@ -12,13 +12,11 @@
 namespace vfemu {
 
 
+/**
+ * A connector defines how two ports should be connected
+ */
 class Connector {
 public:
-	/**
-	 * This method needs to be set to NULL 
-	 * during init. It will be filled during the
-	 * matching process.
-	 */
 	inline virtual Status send(void* data) {
 		return Status::SUCCESS;
 	}
@@ -32,13 +30,10 @@ public:
 class Module;
 
 
-/**
- * A connector defines how two ports should be connected
- */
 class ConnectorType {
 public:
 	/**
-	 * name of the connector
+	 * name of the connector type
 	 */
 	const char*		name;
 

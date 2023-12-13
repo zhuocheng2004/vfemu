@@ -1,5 +1,4 @@
 
-#include <cstdio>
 #include <cstring>
 #include <modules/pin.h>
 #include <modules/toyram8x8.h>
@@ -8,14 +7,6 @@
 namespace vfemu {
 
 namespace toyram {
-
-
-std::vector<Port> ToyRAM8x8ModuleType::toyram8x8_ports =  {
-	Port("load",  "pin1", ToyRAM8x8Module::load_receive),
-	Port("store", "pin1", ToyRAM8x8Module::store_receive),
-	Port("addr",  "pin8", ToyRAM8x8Module::addr_receive),
-	Port("data",  "pin8", ToyRAM8x8Module::data_receive),
-};
 
 
 Status ToyRAM8x8Module::load_receive(Module* receiver, void* data) {

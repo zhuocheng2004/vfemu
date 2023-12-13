@@ -5,6 +5,4 @@
 
 namespace vfemu {
 
-Registry<PortType> PortType::registry;
-
 }

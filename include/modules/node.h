@@ -23,29 +23,27 @@ namespace vfemu {
 namespace node {
 
 
-#define NODE3U8 "node3u8"
-
-
 class Node3u8Module : public Module {
 public:
-	inline Node3u8Module(const std::vector<Port> ports) : Module(ports) { }
-
-	static Status p1_receive(Module* receiver, void* data);
-	static Status p2_receive(Module* receiver, void* data);
-	static Status p3_receive(Module* receiver, void* data);
+	inline Node3u8Module() : Module({
+		Port("p0", "pin8", Node3u8Module::p1_receive),
+		Port("p1", "pin8", Node3u8Module::p2_receive),
+		Port("p2", "pin8", Node3u8Module::p3_receive)
+	}) { }
 
 private:
 	static Status generic_receive(Module* receiver, int index, u8 data);
-};
 
-class Node3u8ModuleType : public ModuleType {
-public:
-	static std::vector<Port> node3u8_ports;
+	inline static Status p1_receive(Module* receiver, void* data) {
+		return generic_receive(receiver, 0, (u8) (unsigned long) data);
+	}
 
-	inline Node3u8ModuleType() : ModuleType(NODE3U8, node3u8_ports) { }
+	inline static Status p2_receive(Module* receiver, void* data) {
+		return generic_receive(receiver, 1, (u8) (unsigned long) data);
+	}
 
-	inline Node3u8Module* create() {
-		return new Node3u8Module(ports);
+	inline static Status p3_receive(Module* receiver, void* data) {
+		return generic_receive(receiver, 2, (u8) (unsigned long) data);
 	}
 };
 

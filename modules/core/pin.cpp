@@ -13,7 +13,7 @@ static int getPinBits(Port* port) {
 	return n;
 }
 
-static bool isPowerOfTwo(int n) {
+inline static bool isPowerOfTwo(int n) {
 	return (n & (n-1)) == 0;
 }
 
@@ -29,6 +29,15 @@ Pin2pinConnector::Pin2pinConnector(Port* dest) : dest(dest) {
 	}
 }
 
+ Status Pin2pinConnector::send(void* data) {
+	unsigned long v = (unsigned long) data;
+	v &= mask;
+	if (dest && dest->receive && dest->module) {
+		dest->receive(dest->module, (void *) v);
+	}
+	return Status::SUCCESS;
+}
+
 
 Status Pin2pin::connect(Port* port1, Port* port2) {
 	if (!port1 || !port2) {
@@ -37,6 +46,7 @@ Status Pin2pin::connect(Port* port1, Port* port2) {
 	if (port1->connector || port2->connector) {
 		return Status::ERR_EXIST;
 	}
+
 	int bits1 = getPinBits(port1), bits2 = getPinBits(port2);
 	if (bits1 <= 0 || bits1 > 32 || bits2 <= 0 || bits2 > 32
 		|| !isPowerOfTwo(bits1) || !isPowerOfTwo(bits2)
@@ -64,6 +74,7 @@ Status Pin2pin::disconnect(Port* port1, Port* port2) {
 	}
 	return Status::SUCCESS;
 }
+
 
 } // namespace pin
 

@@ -3,11 +3,11 @@
 #define VFEMU_REGISTRY_H
 
 #include <list>
-#include <iostream>
 #include <vfemu/types.h>
 
 
 namespace vfemu {
+
 
 /*
 template<typename T>
@@ -20,7 +20,7 @@ concept Keyable = requires (T a) {
 template <typename T> 
 class Registry {
 public:
-	T* get(const char* name) {
+	inline T* get(const char* name) {
 		for (auto v : list) {
 			if (v->name == name) {
 				return v;
@@ -29,7 +29,7 @@ public:
 		return nullptr;
 	}
 
-	Status add(T* v) {
+	inline Status add(T* v) {
 		for (auto _v : list) {
 			if (_v->name == v->name) {
 				return Status::ERR_EXIST;
@@ -39,10 +39,11 @@ public:
 		return Status::SUCCESS;
 	}
 
-	Status remove(T* v) {
+	inline Status remove(T* v) {
 		list.remove(v);
 		return Status::SUCCESS;
 	}
+
 private:
 	std::list<T*> list;
 };
