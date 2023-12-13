@@ -10,7 +10,7 @@ which means that it can simulate a module (e.g. CPU, RAM, Disk, Monitor etc.) as
 
 VFEMU might not be very fast, but we have more freedom.
 
-The API is not complicated. You can easily design your own module and connect existing modules in your favorite way.
+Its API is not complicated. You can easily design your own module and connect existing modules in your favorite way.
 
 Anyone can make your own computer and gadgets here!
 
@@ -26,9 +26,16 @@ cd build/
 cmake ..
 ```
 
+And then you can run examples in this way
+```bash
+./examples/demo_tst001
+```
+
 
 ## Examples
 
-See files in `example/`. The code should not be difficult to understood.
+Please see files in `example/`. 
 
-We recommend that you start from `demo_toyram8x8.cpp`.
+We recommend that you start from `demo_tst001.cpp`, 
+which is a small example about how to connect custom CPU 
+and custom RAM to form a small computer.

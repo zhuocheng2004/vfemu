@@ -3,9 +3,8 @@
 #define VFEMU_MODULE_H
 
 #include <vector>
-#include <vfemu/constants.h>
 #include <vfemu/types.h>
-#include <vfemu/Registry.h>
+#include <vfemu/Connector.h>
 #include <vfemu/Port.h>
 
 
@@ -35,6 +34,20 @@ protected:
 	 * the list of ports
 	 */
 	std::vector<Port>		ports;
+
+	inline Status sendToPort(int portIndex, void* data) {
+		Port& port = ports[portIndex];
+		if (port.connector)
+			return port.connector->send(data);
+		return Status::SUCCESS;
+	}
+
+	inline Status sendToPort(int portIndex, unsigned long data) {
+		Port& port = ports[portIndex];
+		if (port.connector)
+			return port.connector->send(data);
+		return Status::SUCCESS;
+	}
 };
 
 

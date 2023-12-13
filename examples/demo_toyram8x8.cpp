@@ -11,17 +11,12 @@ using namespace vfemu;
 
 
 int main() {
-	const char DATA[] = "ABCDEFGH 0123456789\nHello World!\n";
+	const u8 DATA[] = "ABCDEFGH 0123456789\nHello World!\n";
 
-	/*
-	 * register "pin2pin" connector type 
-	 */
+
 	auto pin2pin = pin::Pin2pin();
 	ConnectorType::registry.add(&pin2pin);
 
-	/**
-	 * generate module instances of different types
-	 */
 	auto out = new char1::CChar1OutModule();
 	auto ram = new toyram::ToyRAM8x8Module();
 	auto node = new node::Node3u8Module();
@@ -36,13 +31,6 @@ int main() {
 		input, load_ctrl, store_ctrl, out_ctrl, addr_ctrl,
 	});
 
-	/**
-	 * Here we defines how ports are connected.
-	 * 
-	 * The entry { "pin2pin", load_ctrl, "out", ram, "load" } 
-	 * means connect port "out" of load_ctrl with port "load" of ram, 
-	 * using connector type "pin2pin".
-	 */
 	connectPorts({
 		{ "pin2pin", load_ctrl, "out", ram, "load" },
 		{ "pin2pin", store_ctrl, "out", ram, "store" },

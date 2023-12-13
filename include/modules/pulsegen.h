@@ -3,8 +3,10 @@
  * Toy Periodic Pulse Generator Module
  *
  * pulsegen
+ * Module is disabled on init.
  * Ports:
- * 	out:	pin1	# pulses will be emitted from this port
+ * 	out:		pin1	# pulses will be emitted from this port
+ * 	enable:		pin1	# clock enable
  */
 
 #ifndef VFEMU_MODULES_PULSEGEN_H
@@ -24,7 +26,8 @@ class PulseGenModule : public Module {
 public:
 	inline PulseGenModule(const std::chrono::microseconds& period) 
 		: Module({
-			Port("out", "pin1")
+			Port("out", "pin1"),
+			Port("enable", "pin1", enable_receive)
 		}), period(period) { }
 
 	
@@ -33,19 +36,21 @@ public:
 	virtual Status exit();
 
 	inline void enable() {
-		masked = false;
+		enabled = true;
 	}
 
 	inline void disable() {
-		masked = true;
+		enabled = false;
 	}
 
 private:
 	std::chrono::microseconds	period;
-	bool				masked = false;
+	bool				enabled = false;
 
 	bool				running = false;
 	std::thread			*thread = nullptr;
+
+	static Status enable_receive(Module* receiver, void* data);
 
 	static void pulse_gen_thread(PulseGenModule*);
 };

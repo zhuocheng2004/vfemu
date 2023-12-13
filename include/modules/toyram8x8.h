@@ -23,7 +23,7 @@ namespace toyram {
 
 class ToyRAM8x8Module : public Module {
 public:
-	inline ToyRAM8x8Module(const char* initial_mem, const unsigned int initial_mem_size)
+	inline ToyRAM8x8Module(const u8* initial_mem, const unsigned int initial_mem_size)
 		: Module({
 			Port("load",  "pin1", ToyRAM8x8Module::load_receive),
 			Port("store", "pin1", ToyRAM8x8Module::store_receive),
@@ -42,7 +42,7 @@ private:
 	u8	addr = 0;
 	u8	data = 0;
 
-	const char*		initial_mem;
+	const u8*		initial_mem;
 	const unsigned int 	initial_mem_size;
 
 	static Status load_receive(Module* receiver, void* data);

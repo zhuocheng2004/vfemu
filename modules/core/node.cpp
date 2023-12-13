@@ -13,9 +13,7 @@ Status Node3u8Module::generic_receive(Module* receiver, int index, u8 data) {
 	for (int i = 0; i < 3; i++) {
 		if (i == index)
 			continue;
-		Port& port = module->ports[i];
-		if (port.connector)
-			port.connector->send(data);
+		module->sendToPort(i, data);
 	}
 	return Status::SUCCESS;
 }

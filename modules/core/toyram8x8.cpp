@@ -12,9 +12,7 @@ namespace toyram {
 Status ToyRAM8x8Module::load_receive(Module* receiver, void* data) {
 	if ((unsigned long) data & 0x1) {
 		ToyRAM8x8Module* module = (ToyRAM8x8Module*) receiver;
-		Port& dataPort = module->ports[3];
-		if (dataPort.connector)
-			dataPort.connector->send(module->mem[module->addr]);
+		module->sendToPort(3, module->mem[module->addr]);
 	}
 	return SUCCESS;
 }
@@ -28,20 +26,20 @@ Status ToyRAM8x8Module::store_receive(Module* receiver, void* data) {
 }
 
 Status ToyRAM8x8Module::addr_receive(Module* receiver, void* data) {
-	ToyRAM8x8Module* module = (ToyRAM8x8Module*) receiver;
+	auto module = (ToyRAM8x8Module*) receiver;
 	module->addr = (unsigned long) data & 0xff;
 	return SUCCESS;
 }
 
 Status ToyRAM8x8Module::data_receive(Module* receiver, void* data) {
-	ToyRAM8x8Module* module = (ToyRAM8x8Module*) receiver;
+	auto module = (ToyRAM8x8Module*) receiver;
 	module->data = (unsigned long) data & 0xff;
 	return SUCCESS;
 }
 
 
 Status ToyRAM8x8Module::init() {
-	mem = new u8[1 << 8];
+	mem = new u8[0x100];
 	if (!mem)
 		return Status::ERR_NOMEM;
 	if (initial_mem && initial_mem_size > 0)
