@@ -26,7 +26,7 @@ public:
 
 
 class Connector;
-
+class Module;
 
 /**
  * A port instance of a module 
@@ -47,18 +47,23 @@ public:
 	 * Another module will call this method
 	 * to send data to this module
 	 */
-	Status		(*receive)(void* data);
+	Status		(*receive)(Module* receiver, void* data);
 
 	/**
-	 * the connector instance that this port connects to
+	 * the connector instance this port connects to
 	 */
 	Connector*	connector;
+
+	/**
+	 * the module instance this port is on
+	 */
+	Module*		module;
 
 	/**
 	 * constructor
 	 */
 	inline Port(const char* id, const char* type, 
-		Status (*receive)(void*) = nullptr) 
+		Status (*receive)(Module*, void*) = nullptr) 
 		: id(id), type(type), receive(receive), connector(nullptr) { }
 };
 

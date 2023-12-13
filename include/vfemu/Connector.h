@@ -3,6 +3,7 @@
 #define VFEMU_CONNECTOR_H
 
 
+#include <vector>
 #include <vfemu/types.h>
 #include <vfemu/Registry.h>
 #include <vfemu/Port.h>
@@ -43,6 +44,8 @@ public:
 
 	static Registry<ConnectorType>	registry;
 
+	inline ConnectorType(const char* name) : name(name) { }
+
 	/**
 	 * method to [dis]connect two ports
 	 */
@@ -52,6 +55,17 @@ public:
 	virtual Status connect(Module* module1, const char* id1, Module* module2, const char* id2);
 	virtual Status disconnect(Module* module1, const char* id1, Module* module2, const char* id2);
 };
+
+
+typedef struct {
+	const char*	connectorType;
+	Module*		module1;
+	const char*	id1;
+	Module*		module2;
+	const char*	id2;
+} ConnectionInfo;
+
+Status connectPorts(std::vector<ConnectionInfo> infos);
 
 
 } // namespace vfemu

@@ -1,9 +1,8 @@
 
 #include <iostream>
-#include <vfemu/constants.h>
 #include <vfemu/Module.h>
-#include <modules/pin.h>
 #include <modules/char1.h>
+#include <modules/pin.h>
 
 using namespace std::chrono_literals;
 
@@ -12,18 +11,42 @@ namespace vfemu {
 
 namespace char1 {
 
-const std::vector<Port> char1_out_ports =  {
-	Port("in", "pin8", char1_out_receive)
+
+
+std::vector<Port> Char1OutModuleType::char1_out_ports = {
+	Port("in", "pin8", Char1OutModule::out_receive)
 };
 
-Status char1_out_receive(void* data) {
+
+Status Char1OutModule::out_receive(Module* receiver, void* data) {
 	u8 received = ((unsigned long) data & 0xff);
-	std::cout << received << std::flush;
+	std::cout << (char) received << std::flush;
 	return SUCCESS;
 }
 
 
-const std::vector<Port> char1_gen_ports =  {
+std::vector<Port> CChar1OutModuleType::cchar1_out_ports = {
+	Port("in", "pin8", CChar1OutModule::out_receive),
+	Port("ctrl", "pin1", CChar1OutModule::ctrl_receive),
+};
+
+
+Status CChar1OutModule::out_receive(Module* receiver, void* data) {
+	auto module = (CChar1OutModule*) receiver;
+	module->data = ((unsigned long) data & 0xff);
+	return SUCCESS;
+}
+
+Status CChar1OutModule::ctrl_receive(Module* receiver, void* data) {
+	auto module = (CChar1OutModule*) receiver;
+	if ((unsigned long) data & 0x1) {
+		std::cout << (char) module->data << std::flush;
+	}
+	return SUCCESS;
+}
+
+
+std::vector<Port> Char1GenModuleType::char1_gen_ports =  {
 	Port("out", "pin8")
 };
 
@@ -51,6 +74,7 @@ Status Char1GenModule::exit() {
 	return Status::SUCCESS;
 }
 
-}
 
-}
+} // namespace char1
+
+} // namespace vfemu

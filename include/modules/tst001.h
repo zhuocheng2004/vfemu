@@ -5,7 +5,20 @@
 #include <vfemu/Module.h>
 
 
-extern vfemu::VFEMUModule tst001_module;
+namespace vfemu {
+
+namespace tst {
+
+
+/*
+ * simple toy CPU module example
+ */
+
+
+}
+
+
+}
 
 
 #endif /* VFEMU_MODULES_TST001_H */

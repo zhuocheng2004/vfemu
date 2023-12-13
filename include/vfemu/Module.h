@@ -40,6 +40,8 @@ public:
 
 	Port* getPort(const char* id);
 
+	Status initPorts();
+
 protected:
 	/* ================================
 	 * Module port info
@@ -100,7 +102,7 @@ public:
 	/* ================================
 	 * Module Type method
 	 */
-	inline ModuleType(const char* name, const int num_ports, const std::vector<Port> ports) 
+	inline ModuleType(const char* name, const std::vector<Port> ports) 
 		: min_vfemu_version(vfemu::VERSION), target_vfemu_version(vfemu::VERSION),
 		 name(name), ports(ports) { }
 

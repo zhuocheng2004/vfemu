@@ -12,6 +12,7 @@ Module::Module(const std::vector<Port> ports) {
 		// copy operator invoked here
 		this->ports.push_back(port);
 	}
+	initPorts();
 }
 
 
@@ -31,5 +32,13 @@ Port* Module::getPort(const char* id) {
 	}
 	return nullptr;
 }
+
+Status Module::initPorts() {
+	for(auto& port: ports) {
+		port.module = this;
+	}
+	return Status::SUCCESS;
+}
+
 
 }

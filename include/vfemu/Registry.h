@@ -3,6 +3,7 @@
 #define VFEMU_REGISTRY_H
 
 #include <list>
+#include <iostream>
 #include <vfemu/types.h>
 
 

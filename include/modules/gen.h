@@ -1,4 +1,16 @@
 
+/*
+ * toy data input module
+ *
+ * gen1: 1-bit generator
+ * Ports:
+ * 	out:	pin1	# data out
+ * 
+ * gen8: 8-bit generator
+ * Ports:
+ * 	out:	pin8	# data out
+ */
+
 #ifndef VFEMU_MODULES_GEN_H
 #define VFEMU_MODULES_GEN_H
 
@@ -10,24 +22,39 @@ namespace vfemu {
 namespace gen {
 
 
+#define GEN1 "gen1"
 #define GEN8 "gen8"
 
 
-class Gen8Module;
+/* ================
+ * 1-bit generator
+ */
 
-class U8Controller {
-private:
-	Gen8Module* module;
+
+class Gen1Module : public Module {
 public:
-	inline U8Controller(Gen8Module* module) {
-		this->module = module;
-	}
+	inline Gen1Module(const std::vector<Port> ports)
+		: Module(ports) { }
 
 	void send(const u8 data);
 };
 
 
-extern const std::vector<Port> gen8_ports;
+class Gen1ModuleType : public ModuleType {
+public:
+	static std::vector<Port> gen1_ports;
+
+	inline Gen1ModuleType() : ModuleType(GEN8, gen1_ports) { }
+
+	inline Gen1Module* create() {
+		return new Gen1Module(ports);
+	}
+};
+
+
+/* ================
+ * 8-bit generator
+ */
 
 
 class Gen8Module : public Module {
@@ -35,10 +62,7 @@ public:
 	inline Gen8Module(const std::vector<Port> ports)
 		: Module(ports) { }
 
-	inline Status init(U8Controller** controller) {
-		*controller = new U8Controller(this);
-		return Status::SUCCESS;
-	}
+	void send(const u8 data);
 };
 
 
@@ -48,7 +72,8 @@ class Gen8ModuleType : public ModuleType {
  *	out: pin8
  */
 public:
-	inline Gen8ModuleType() : ModuleType(GEN8, 1, gen8_ports) { }
+	static std::vector<Port> gen8_ports;
+	inline Gen8ModuleType() : ModuleType(GEN8, gen8_ports) { }
 
 	inline Gen8Module* create() {
 		return new Gen8Module(ports);

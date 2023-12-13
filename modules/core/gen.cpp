@@ -1,5 +1,5 @@
 
-#include <vfemu/constants.h>
+#include <cstdio>
 #include <modules/gen.h>
 
 
@@ -7,12 +7,25 @@ namespace vfemu {
 
 namespace gen {
 
-const std::vector<Port> gen8_ports = {
+
+std::vector<Port> Gen1ModuleType::gen1_ports = {
+	Port("out", "pin1")
+};
+
+void Gen1Module::send(const u8 data) {
+	Port port = ports[0];
+	if (port.connector) {
+		port.connector->send((void *) (unsigned long) data);
+	}
+}
+
+
+std::vector<Port> Gen8ModuleType::gen8_ports = {
 	Port("out", "pin8")
 };
 
-void U8Controller::send(const u8 data) {
-	Port port = module->getPort(0);
+void Gen8Module::send(const u8 data) {
+	Port port = ports[0];
 	if (port.connector) {
 		port.connector->send((void *) (unsigned long) data);
 	}

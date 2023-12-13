@@ -49,6 +49,11 @@ typedef enum {
 	 * Target doesn't exist.
 	 */
 	ERR_NONEXIST,
+
+	/**
+	 * Out of memory
+	 */
+	ERR_NOMEM,
 } Status;
 
 }
