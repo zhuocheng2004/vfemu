@@ -24,7 +24,7 @@ Status PulseGenModule::exit() {
 
 
 void PulseGenModule::pulse_gen_thread(PulseGenModule* module) {
-	auto port = &module->ports[0];
+	auto port = module->ports[0].second;
 	while (module->running) {
 		auto time = std::chrono::steady_clock::now();
 		auto expected = time + module->period;
@@ -36,9 +36,9 @@ void PulseGenModule::pulse_gen_thread(PulseGenModule* module) {
 	}
 }
 
-Status PulseGenModule::enable_receive(Module* receiver, void* data) {
+Status PulseGenModule::enable_receive(Module* receiver, u64 data) {
 	auto module = (PulseGenModule*) receiver;
-	if ((unsigned long) data & 0x1)
+	if (data & 0x1)
 		module->enabled = true;
 	else
 		module->enabled = false;

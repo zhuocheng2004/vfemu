@@ -12,22 +12,22 @@ namespace vfemu {
 namespace char1 {
 
 
-Status Char1OutModule::out_receive(Module* receiver, void* data) {
-	u8 received = ((unsigned long) data & 0xff);
+Status Char1OutModule::out_receive(Module* receiver, u64 data) {
+	u8 received = data & 0xff;
 	std::cout << (char) received << std::flush;
 	return SUCCESS;
 }
 
 
-Status CChar1OutModule::out_receive(Module* receiver, void* data) {
+Status CChar1OutModule::out_receive(Module* receiver, u64 data) {
 	auto module = (CChar1OutModule*) receiver;
-	module->data = ((unsigned long) data & 0xff);
+	module->data = data & 0xff;
 	return SUCCESS;
 }
 
-Status CChar1OutModule::ctrl_receive(Module* receiver, void* data) {
+Status CChar1OutModule::ctrl_receive(Module* receiver, u64 data) {
 	auto module = (CChar1OutModule*) receiver;
-	if ((unsigned long) data & 0x1) {
+	if (data & 0x1) {
 		std::cout << (char) module->data << std::flush;
 	}
 	return SUCCESS;
@@ -37,7 +37,7 @@ Status CChar1OutModule::ctrl_receive(Module* receiver, void* data) {
 void Char1GenModule::char1_gen_thread(Char1GenModule* module) {
 	auto ch = module->ch;
 	auto interval = module->interval;
-	auto port = &module->ports[0];
+	auto port = module->ports[0].second;
 	do {
 		std::this_thread::sleep_for(interval);
 		if (port->connector) {

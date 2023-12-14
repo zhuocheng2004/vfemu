@@ -24,11 +24,11 @@ namespace pulsegen {
 
 class PulseGenModule : public Module {
 public:
-	inline PulseGenModule(const std::chrono::microseconds& period) 
+	inline PulseGenModule(const std::chrono::nanoseconds& period, bool enabledOnCreate = false) 
 		: Module({
-			Port("out", "pin1"),
-			Port("enable", "pin1", enable_receive)
-		}), period(period) { }
+			std::make_pair("out", new Port("pin1")),
+			std::make_pair("enable", new Port("pin1", enable_receive)),
+		}), period(period), enabled(enabledOnCreate) { }
 
 	
 	virtual Status init();
@@ -44,13 +44,13 @@ public:
 	}
 
 private:
-	std::chrono::microseconds	period;
-	bool				enabled = false;
+	std::chrono::nanoseconds	period;
+	bool				enabled;
 
 	bool				running = false;
 	std::thread			*thread = nullptr;
 
-	static Status enable_receive(Module* receiver, void* data);
+	static Status enable_receive(Module* receiver, u64 data);
 
 	static void pulse_gen_thread(PulseGenModule*);
 };

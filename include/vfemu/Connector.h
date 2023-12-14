@@ -2,7 +2,7 @@
 #ifndef VFEMU_CONNECTOR_H
 #define VFEMU_CONNECTOR_H
 
-
+#include <string>
 #include <vector>
 #include <vfemu/types.h>
 #include <vfemu/Registry.h>
@@ -17,13 +17,18 @@ namespace vfemu {
  */
 class Connector {
 public:
-	inline virtual Status send(void* data) {
+	inline Connector(Port* dest) : dest(dest) { }
+
+	inline virtual Status send(u64 data) {
 		return Status::SUCCESS;
 	}
 
-	inline virtual Status send(unsigned long data) {
-		return send((void*) data);
+	inline Port* getDest() {
+		return dest;
 	}
+
+protected:
+	Port*	dest;
 };
 
 
@@ -32,14 +37,8 @@ class Module;
 
 class ConnectorType {
 public:
-	/**
-	 * name of the connector type
-	 */
-	const char*		name;
 
-	static Registry<ConnectorType>	registry;
-
-	inline ConnectorType(const char* name) : name(name) { }
+	inline ConnectorType() { }
 
 	/**
 	 * method to [dis]connect two ports
@@ -47,20 +46,21 @@ public:
 	virtual Status connect(Port* port1, Port* port2);
 	virtual Status disconnect(Port* port1, Port* port2);
 
-	virtual Status connect(Module* module1, const char* id1, Module* module2, const char* id2);
-	virtual Status disconnect(Module* module1, const char* id1, Module* module2, const char* id2);
+	virtual Status connect(Module* module1, const std::string& id1, Module* module2, const std::string& id2);
+	virtual Status disconnect(Module* module1, const std::string& id1, Module* module2, const std::string& id2);
 };
 
 
 typedef struct {
-	const char*	connectorType;
-	Module*		module1;
-	const char*	id1;
-	Module*		module2;
-	const char*	id2;
+	ConnectorType*		connectorType;
+	Module*			module1;
+	const std::string	id1;
+	Module*			module2;
+	const std::string	id2;
 } ConnectionInfo;
 
 Status connectPorts(std::vector<ConnectionInfo> infos);
+Status disconnectPorts(std::vector<ConnectionInfo> infos);
 
 
 } // namespace vfemu

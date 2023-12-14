@@ -17,6 +17,10 @@ void Gen8Module::send(const u8 data) {
 	sendToPort(0, data);
 }
 
+void Gen16Module::send(const u16 data) {
+	sendToPort(0, data);
+}
+
 
 }
 

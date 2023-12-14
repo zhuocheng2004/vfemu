@@ -4,16 +4,16 @@
 
 namespace vfemu {
 
-namespace tst {
+namespace tst001 {
 
 
-Status TST001Module::reset_receive(Module* receiver, void* data) {
+Status TST001Module::reset_receive(Module* receiver, u64 data) {
 	auto module = (TST001Module*) receiver;
 	module->reset();
 	return Status::SUCCESS;
 }
 
-Status TST001Module::clock_receive(Module* receiver, void* data) {
+Status TST001Module::clock_receive(Module* receiver, u64 data) {
 	auto module = (TST001Module*) receiver;
 	if (module->running) {
 		module->action();
@@ -21,15 +21,15 @@ Status TST001Module::clock_receive(Module* receiver, void* data) {
 	return Status::SUCCESS;
 }
 
-Status TST001Module::data_receive(Module* receiver, void* data) {
+Status TST001Module::data_receive(Module* receiver, u64 data) {
 	auto module = (TST001Module*) receiver;
-	module->data = (u8) (unsigned long) data;
+	module->data = data & 0xff;
 	return Status::SUCCESS;
 }
 
-Status TST001Module::io_receive(Module* receiver, void* data) {
+Status TST001Module::io_receive(Module* receiver, u64 data) {
 	auto module = (TST001Module*) receiver;
-	module->io_data = (u8) (unsigned long) data;
+	module->io_data = data & 0xff;
 	return Status::SUCCESS;
 }
 
@@ -122,9 +122,9 @@ void TST001Module::action_mem(u8 instr) {
 			a = loadData(addr); break;
 		case LDB:
 			b = loadData(addr); break;
-		case STRA:
+		case STA:
 			storeData(addr, a); break;
-		case STRB:
+		case STB:
 			storeData(addr, b); break;
 		default:
 			reset();
@@ -136,7 +136,7 @@ void TST001Module::action_io(u8 instr) {
 		case IN:
 			a = io_data; break;
 		case OUT:
-			sendToPort(6, a); break;
+			sendToPort(IDX_IO, a); break;
 		default:
 			reset();
 	}

@@ -36,11 +36,11 @@ namespace char1 {
 class Char1OutModule : public Module {
 public:
 	inline Char1OutModule() : Module({
-		Port("in", "pin8", Char1OutModule::out_receive)
+		std::make_pair("in", new Port("pin8", Char1OutModule::out_receive)),
 	}) { }
 
 private:
-	static Status out_receive(Module* receiver, void* data);
+	static Status out_receive(Module* receiver, u64 data);
 };
 
 
@@ -51,15 +51,15 @@ private:
 class CChar1OutModule : public Module {
 public:
 	inline CChar1OutModule() : Module({
-		Port("in", "pin8", CChar1OutModule::out_receive),
-		Port("ctrl", "pin1", CChar1OutModule::ctrl_receive)
+		std::make_pair("in", new Port("pin8", CChar1OutModule::out_receive)),
+		std::make_pair("ctrl", new Port("pin1", CChar1OutModule::ctrl_receive)),
 	}) { }
 
 private:
 	u8	data = 0;
 
-	static Status out_receive(Module* receiver, void* data);
-	static Status ctrl_receive(Module* receiver, void* data);
+	static Status out_receive(Module* receiver, u64 data);
+	static Status ctrl_receive(Module* receiver, u64 data);
 };
 
 
@@ -69,9 +69,9 @@ private:
 
 class Char1GenModule : public Module {
 public:
-	inline Char1GenModule(const u8 ch, const std::chrono::milliseconds& interval) 
+	inline Char1GenModule(u8 ch, const std::chrono::milliseconds& interval) 
 		: Module({
-			Port("out", "pin8")
+			std::make_pair("out", new Port("pin8")),
 		}), ch(ch), interval(interval) { }
 	
 	virtual Status init();

@@ -7,9 +7,6 @@
 namespace vfemu {
 
 
-Registry<ConnectorType> ConnectorType::registry;
-
-
 Status ConnectorType::connect(Port* port1, Port* port2) {
 	return Status::SUCCESS;
 }
@@ -19,7 +16,7 @@ Status ConnectorType::disconnect(Port* port1, Port* port2) {
 }
 
 
-Status ConnectorType::connect(Module* module1, const char* id1, Module* module2, const char* id2) {
+Status ConnectorType::connect(Module* module1, const std::string& id1, Module* module2, const std::string& id2) {
 	auto port1 = module1->getPort(id1), port2 = module2->getPort(id2);
 	if (!port1 || !port2) {
 		return Status::ERR_NONEXIST;
@@ -27,7 +24,7 @@ Status ConnectorType::connect(Module* module1, const char* id1, Module* module2,
 	return connect(port1, port2);
 }
 
-Status ConnectorType::disconnect(Module* module1, const char* id1, Module* module2, const char* id2) {
+Status ConnectorType::disconnect(Module* module1, const std::string& id1, Module* module2, const std::string& id2) {
 	auto port1 = module1->getPort(id1), port2 = module2->getPort(id2);
 	if (!port1 || !port2) {
 		return Status::ERR_NONEXIST;
@@ -39,13 +36,29 @@ Status ConnectorType::disconnect(Module* module1, const char* id1, Module* modul
 Status connectPorts(std::vector<ConnectionInfo> infos) {
 	Status status = Status::SUCCESS;
 	for (auto& info : infos) {
-		ConnectorType* connectorType = ConnectorType::registry.get(info.connectorType);
+		ConnectorType* connectorType = info.connectorType;
 		if (!connectorType) {
 			status = Status::WARNING;
 			continue;
 		}
 
 		if (connectorType->connect(info.module1, info.id1, info.module2, info.id2) != Status::SUCCESS) {
+			status = Status::WARNING;
+		}
+	}
+	return status;
+}
+
+Status disconnectPorts(std::vector<ConnectionInfo> infos) {
+	Status status = Status::SUCCESS;
+	for (auto& info : infos) {
+		ConnectorType* connectorType = info.connectorType;
+		if (!connectorType) {
+			status = Status::WARNING;
+			continue;
+		}
+
+		if (connectorType->disconnect(info.module1, info.id1, info.module2, info.id2) != Status::SUCCESS) {
 			status = Status::WARNING;
 		}
 	}

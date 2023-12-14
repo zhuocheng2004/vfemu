@@ -1,5 +1,4 @@
 
-#include <cstring>
 #include <list>
 #include <vfemu/Module.h>
 
@@ -7,9 +6,8 @@
 namespace vfemu {
 
 
-Module::Module(const std::vector<Port> ports) {
+Module::Module(const std::vector<std::pair<const std::string, Port*>> ports) {
 	for (auto port : ports) {
-		// copy operator invoked here
 		this->ports.push_back(port);
 	}
 	initPorts();
@@ -25,10 +23,10 @@ Status Module::exit(void) {
 }
 
 
-Port* Module::getPort(const char* id) {
-	for (auto& port : ports) {
-		if (strcmp(id, port.id) == 0) {
-			return &port;
+Port* Module::getPort(const std::string& id) {
+	for (auto port : ports) {
+		if (id == port.first) {
+			return port.second;
 		}
 	}
 	return nullptr;
@@ -36,8 +34,8 @@ Port* Module::getPort(const char* id) {
 
 
 Status Module::initPorts() {
-	for(auto& port: ports) {
-		port.module = this;
+	for(auto port: ports) {
+		port.second->module = this;
 	}
 	return Status::SUCCESS;
 }
@@ -51,5 +49,12 @@ Status initModules(std::vector<Module*> modules) {
 	return Status::SUCCESS;
 }
 
+Status exitModules(std::vector<Module*> modules) {
+	for (auto module : modules) {
+		if (module)
+			module->exit();
+	}
+	return Status::SUCCESS;
+}
 
 }

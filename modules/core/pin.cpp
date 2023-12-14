@@ -1,5 +1,4 @@
 
-#include <cstring>
 #include <modules/pin.h>
 
 namespace vfemu {
@@ -9,7 +8,7 @@ namespace pin {
 
 static int getPinBits(Port* port) {
 	int n = -1;
-	sscanf(port->type, "pin%d", &n);
+	sscanf(port->type.data(), "pin%d", &n);
 	return n;
 }
 
@@ -18,7 +17,7 @@ inline static bool isPowerOfTwo(int n) {
 }
 
 
-Pin2pinConnector::Pin2pinConnector(Port* dest) : dest(dest) {
+Pin2pinConnector::Pin2pinConnector(Port* dest) : Connector(dest) {
 	bits = getPinBits(dest);
 	if (bits <= 0) {
 		dest = nullptr;
@@ -29,11 +28,9 @@ Pin2pinConnector::Pin2pinConnector(Port* dest) : dest(dest) {
 	}
 }
 
- Status Pin2pinConnector::send(void* data) {
-	unsigned long v = (unsigned long) data;
-	v &= mask;
+ Status Pin2pinConnector::send(u64 data) {
 	if (dest && dest->receive && dest->module) {
-		dest->receive(dest->module, (void *) v);
+		dest->receive(dest->module, data & mask);
 	}
 	return Status::SUCCESS;
 }
@@ -60,18 +57,19 @@ Status Pin2pin::connect(Port* port1, Port* port2) {
 }
 
 Status Pin2pin::disconnect(Port* port1, Port* port2) {
-	if (port1) {
-		delete port1->connector;
-		port1->connector = nullptr;
-	}
-	if (port2) {
-		delete port2->connector;
-		port2->connector = nullptr;
-	}
-
 	if (!port1 || !port2) {
 		return Status::ERR_NULL;
 	}
+	if (port1->connector->getDest() != port2
+	|| port2->connector->getDest() != port1) {
+		return Status::ERR_INVALID;
+	}
+
+	delete port1->connector;
+	port1->connector = nullptr;
+	delete port2->connector;
+	port2->connector = nullptr;
+	
 	return Status::SUCCESS;
 }
 
