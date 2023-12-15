@@ -42,11 +42,11 @@ public:
 	static const u64 MSK_V = 0x1, MSK_CLK = 0x2, MSK_RW = 0x4, MSK_ROMSEL = 0x8;
 	static const u64 MSK_PWR = 0x10, MSK_PRD = 0x20;
 
-	constexpr inline u64 toCartridgeData(u8 clk, u8 rw, u8 pwr, u8 prd) {
+	constexpr static inline u64 toCartridgeData(u8 clk, u8 rw, u8 pwr, u8 prd) {
 		return clk * MSK_CLK + rw * MSK_RW + pwr * MSK_PWR + prd * MSK_PRD;
 	}
 
-	constexpr inline u64 toCPUData(u8 irq) {
+	constexpr static inline u64 toCPUData(u8 irq) {
 		return irq;
 	}
 
@@ -62,8 +62,6 @@ public:
 		/** PPU data */
 		u8	pdata;
 	} Data;
-private:
-	Port*		dest;
 };
 
 class NesConn : public ConnectorType {

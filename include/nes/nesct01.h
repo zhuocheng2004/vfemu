@@ -43,6 +43,8 @@ private:
 	/** is CPU running */
 	bool		running = false;
 
+	u8		data = 0;
+
 	/* registers */
 	/** program counter */
 	u16		pc;
@@ -58,6 +60,22 @@ private:
 	static Status reset_receive(Module* receiver, u64 data);
 	static Status nmi_receive(Module* receiver, u64 data);
 	static Status data_receive(Module* receiver, u64 data);
+
+	inline u8 loadData(u16 addr) {
+		sendToPort(IDX_ADDR, addr);	// "addr" < addr
+		sendToPort(IDX_RW, 1);		// "rw" < 1
+		return data;
+	}
+
+	inline void storeData(u8 addr, u8 value) {
+		sendToPort(IDX_ADDR, addr);	// "addr"  < addr
+		sendToPort(IDX_DATA, value);	// "data"  < value
+		sendToPort(IDX_RW, 0);		// "store" < 0
+	}
+
+	void reset();
+
+	void action();
 };
 
 

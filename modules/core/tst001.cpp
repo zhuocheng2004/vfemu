@@ -9,13 +9,14 @@ namespace tst001 {
 
 Status TST001Module::reset_receive(Module* receiver, u64 data) {
 	auto module = (TST001Module*) receiver;
-	module->reset();
+	if (data & 0x1)
+		module->reset();
 	return Status::SUCCESS;
 }
 
 Status TST001Module::clock_receive(Module* receiver, u64 data) {
 	auto module = (TST001Module*) receiver;
-	if (module->running) {
+	if (module->running & (data & 0x1)) {
 		module->action();
 	}
 	return Status::SUCCESS;

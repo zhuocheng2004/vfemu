@@ -16,7 +16,7 @@ TNES01Module::TNES01Module() {
 	controller = new NESCM01Module();
 	cpu = new NESCT01Module();
 	ram = new ToyRAM8x16Module();
-	clock = new PulseGenModule(10ms);
+	clock = new PulseGenModule(500ms);
 	node_addr = new Node3u16Module();
 	node_data = new Node3u8Module();
 	node_clock = new Node3u1Module();
@@ -28,7 +28,7 @@ TNES01Module::TNES01Module() {
 
 Status TNES01Module::init() {
 	initModules({
-		controller, cpu, ram, 
+		controller, cpu, ram, clock,
 		node_addr, node_data, node_clock,
 	});
 	auto pin2pin = pin::Pin2pin();
@@ -46,11 +46,14 @@ Status TNES01Module::init() {
 		{ &pin2pin, node_clock, "p2", controller, "clk" },
 
 		{ &pin2pin, cpu, "rw", controller, "rw" },
-		{ &pin2pin, controller, "rw_ram", ram, "rw_ram" },
+		{ &pin2pin, controller, "rw_ram", ram, "rw" },
 		{ &pin2pin, cpu, "rw", controller, "rw" },
 
 		{ &pin2pin, controller, "irq", cpu, "irq" },
 	});
+
+	clock->enable();
+
 	return Status::SUCCESS;
 }
 
@@ -59,6 +62,7 @@ Status TNES01Module::exit() {
 		controller, cpu, ram, 
 		node_addr, node_data, node_clock,
 	});
+	auto pin2pin = pin::Pin2pin();
 	return Status::SUCCESS;
 }
 

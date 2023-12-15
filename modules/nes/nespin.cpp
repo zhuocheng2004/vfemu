@@ -29,7 +29,6 @@ Status NesConn::connect(Port* port1, Port* port2) {
 	if (!data)
 		return Status::ERR_NOMEM;
 
-
 	port1->connector = new NesConnector(port2);
 	port2->connector = new NesConnector(port1);
 	port1->data = data;

@@ -28,7 +28,7 @@ public:
 	}
 
 protected:
-	Port*	dest;
+	Port*	dest = nullptr;
 };
 
 

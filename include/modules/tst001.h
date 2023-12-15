@@ -68,7 +68,7 @@ private:
 	inline void storeData(u8 addr, u8 value) {
 		sendToPort(IDX_ADDR, addr);	// "addr"  < addr
 		sendToPort(IDX_DATA, value);	// "data"  < value
-		sendToPort(IDX_RW, (unsigned long) 0);		// "store" < 0
+		sendToPort(IDX_RW, 0);		// "store" < 0
 	}
 
 	void action();

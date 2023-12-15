@@ -14,7 +14,7 @@ using namespace vfemu;
 
 int main() {
 	/*
-	 * register "pin2pin" connector type 
+	 * "pin2pin" connector type 
 	 */
 	auto pin2pin = pin::Pin2pin();
 
