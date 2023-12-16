@@ -47,6 +47,35 @@ private:
 	}
 };
 
+class Node4u1Module : public Module {
+public:
+	inline Node4u1Module() : Module({
+		std::make_pair("p0", new Port("pin1", p0_receive)),
+		std::make_pair("p1", new Port("pin1", p1_receive)),
+		std::make_pair("p2", new Port("pin1", p2_receive)),
+		std::make_pair("p3", new Port("pin1", p3_receive)),
+	}) { }
+
+private:
+	static Status generic_receive(Module* receiver, int index, u64 data);
+
+	inline static Status p0_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 0, data);
+	}
+
+	inline static Status p1_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 1, data);
+	}
+
+	inline static Status p2_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 2, data);
+	}
+
+	inline static Status p3_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 3, data);
+	}
+};
+
 
 class Node3u8Module : public Module {
 public:
@@ -72,6 +101,35 @@ private:
 	}
 };
 
+class Node4u8Module : public Module {
+public:
+	inline Node4u8Module() : Module({
+		std::make_pair("p0", new Port("pin8", p0_receive)),
+		std::make_pair("p1", new Port("pin8", p1_receive)),
+		std::make_pair("p2", new Port("pin8", p2_receive)),
+		std::make_pair("p3", new Port("pin8", p3_receive)),
+	}) { }
+
+private:
+	static Status generic_receive(Module* receiver, int index, u64 data);
+
+	inline static Status p0_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 0, data);
+	}
+
+	inline static Status p1_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 1, data);
+	}
+
+	inline static Status p2_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 2, data);
+	}
+	
+	inline static Status p3_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 3, data);
+	}
+};
+
 
 class Node3u16Module : public Module {
 public:
@@ -94,6 +152,35 @@ private:
 
 	inline static Status p2_receive(Module* receiver, u64 data) {
 		return generic_receive(receiver, 2, data);
+	}
+};
+
+class Node4u16Module : public Module {
+public:
+	inline Node4u16Module() : Module({
+		std::make_pair("p0", new Port("pin16", p0_receive)),
+		std::make_pair("p1", new Port("pin16", p1_receive)),
+		std::make_pair("p2", new Port("pin16", p2_receive)),
+		std::make_pair("p3", new Port("pin16", p3_receive)),
+	}) { }
+
+private:
+	static Status generic_receive(Module* receiver, int index, u64 data);
+
+	inline static Status p0_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 0, data);
+	}
+
+	inline static Status p1_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 1, data);
+	}
+
+	inline static Status p2_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 2, data);
+	}
+	
+	inline static Status p3_receive(Module* receiver, u64 data) {
+		return generic_receive(receiver, 3, data);
 	}
 };
 

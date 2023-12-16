@@ -18,6 +18,7 @@
 #include <nes/nespin.h>
 #include <nes/nescm.h>
 #include <nes/nesct01.h>
+#include <nes/nesppu.h>
 
 
 namespace vfemu {
@@ -39,11 +40,13 @@ public:
 private:
 	NESCM01Module*		controller;
 	NESCT01Module*		cpu;
+	NESPPUModule*		ppu;
 	ToyRAM8x16Module*	ram;
 	PulseGenModule*		clock;
-	Node3u16Module*		node_addr;
-	Node3u8Module*		node_data;
-	Node3u1Module*		node_clock;
+	Node4u16Module*		node_addr;
+	Node4u8Module*		node_data;
+	Node4u1Module*		node_clock;
+	Node3u1Module*		node_reset;
 };
 
 

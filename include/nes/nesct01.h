@@ -39,6 +39,9 @@ public:
 	static const int IDX_CLK = 0, IDX_RST = 1, IDX_NMI = 2, IDX_IRQ = 3;
 	static const int IDX_RW = 4, IDX_ADDR = 5, IDX_DATA = 6;
 
+	static const u8 MSK_CARRY = 0x01, MSK_ZERO = 0x02, MSK_INT = 0x04 /* set to disable non-NMI interrupts */, MSK_DEC = 0x08;
+	static const u8 MSK_B = 0x30, MSK_OVERFLOW = 0x40, MSK_NEG = 0x80;
+
 private:
 	/** is CPU running */
 	bool		running = false;
@@ -56,10 +59,10 @@ private:
 	/** flag */
 	u8		p;
 
-	static Status clock_receive(Module* receiver, u64 data);
-	static Status reset_receive(Module* receiver, u64 data);
-	static Status nmi_receive(Module* receiver, u64 data);
-	static Status data_receive(Module* receiver, u64 data);
+	static Status clock_receive(Module*, u64);
+	static Status reset_receive(Module*, u64);
+	static Status nmi_receive(Module*, u64);
+	static Status data_receive(Module*, u64);
 
 	inline u8 loadData(u16 addr) {
 		sendToPort(IDX_ADDR, addr);	// "addr" < addr
@@ -67,15 +70,37 @@ private:
 		return data;
 	}
 
-	inline void storeData(u8 addr, u8 value) {
+	inline void storeData(u16 addr, u8 value) {
 		sendToPort(IDX_ADDR, addr);	// "addr"  < addr
 		sendToPort(IDX_DATA, value);	// "data"  < value
 		sendToPort(IDX_RW, 0);		// "store" < 0
 	}
 
+	inline void pushStack(u8 value) {
+		storeData(0x0100 + sp, value);
+		sp--;
+	}
+
+	inline u8 popStack() {
+		sp++;
+		u8 v = loadData(0x0100 + sp);
+		return v;
+	}
+
+	u8 adjustZN(u8 v);
+	u8 add(u8 a1, u8 a2);
+	u8 sub(u8 a1, u8 a2);
+
+	u16 branch(u8 offset);
+
 	void reset();
 
 	void action();
+
+	void action_control(u8 instr);
+	void action_alu(u8 instr);
+	void action_mv(u8 instr);	// read-modify-write
+	void action_other(u8 instr);	// unofficial opcodes
 };
 
 

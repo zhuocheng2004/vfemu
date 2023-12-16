@@ -16,6 +16,8 @@
 #include <thread>
 #include <vfemu/Module.h>
 
+using namespace std::chrono_literals;
+
 
 namespace vfemu {
 
@@ -24,7 +26,7 @@ namespace pulsegen {
 
 class PulseGenModule : public Module {
 public:
-	inline PulseGenModule(const std::chrono::nanoseconds& period, bool enabledOnCreate = false) 
+	inline PulseGenModule(const std::chrono::nanoseconds& period = 0ns, bool enabledOnCreate = false) 
 		: Module({
 			std::make_pair("out", new Port("pin1")),
 			std::make_pair("enable", new Port("pin1", enable_receive)),

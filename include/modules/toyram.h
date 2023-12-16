@@ -69,7 +69,7 @@ public:
 
 	static const int IDX_RW = 0, IDX_ADDR = 1, IDX_DATA = 2;
 	
-	inline ToyRAM8x16Module(unsigned int size = 1 << 8) : ToyRAM8x16Module(nullptr, 0, size) { }
+	inline ToyRAM8x16Module(unsigned int size = 1 << 16) : ToyRAM8x16Module(nullptr, 0, size) { }
 
 	Status init();
 	Status exit();

@@ -60,7 +60,7 @@ Status ToyRAM8x16Module::rw_receive(Module* receiver, u64 data) {
 
 Status ToyRAM8x16Module::addr_receive(Module* receiver, u64 data) {
 	auto module = (ToyRAM8x16Module*) receiver;
-	module->addr = data & 0xff;
+	module->addr = data & 0xffff;
 	return SUCCESS;
 }
 
