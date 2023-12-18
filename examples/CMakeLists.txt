@@ -6,4 +6,4 @@ add_executable(demo_tst001 demo_tst001.cpp)
 target_link_libraries(demo_tst001 core modules_core)
 
 add_executable(demo_tnes01 demo_tnes01.cpp)
-target_link_libraries(demo_tnes01 tnes01 core modules_core)
+target_link_libraries(demo_tnes01 tnes01 core modules_core SDL2::SDL2)

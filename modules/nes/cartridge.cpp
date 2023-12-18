@@ -51,9 +51,12 @@ Status CartMapper0Module::cart_receive(Module* receiver, u64 data) {
 				}
 			}
 		}
-	} else {
-		// write
-		// Nothing happens.
+	}
+	
+	// PPU read
+	u16 paddr = dat->paddr;
+	if (data & NesConnector::MSK_PRD) {
+		dat->pdata = info.chr[paddr];
 	}
 
 	return Status::SUCCESS;

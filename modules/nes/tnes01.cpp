@@ -17,7 +17,7 @@ TNES01Module::TNES01Module() {
 	cpu = new NESCT01Module();
 	ppu = new NESPPUModule();
 	ram = new ToyRAM8x16Module(0x800);
-	clock = new PulseGenModule(50us);
+	clock = new PulseGenModule(10us);
 	node_addr = new Node4u16Module();
 	node_data = new Node4u8Module();
 	node_clock = new Node4u1Module();

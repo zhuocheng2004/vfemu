@@ -71,6 +71,23 @@ Status NESCM01Module::cart_receive(Module* receiver, u64 data) {
 	return Status::SUCCESS;
 }
 
+Status NESCM01Module::paddr_receive(Module* receiver, u64 data) {
+	auto module = (NESCM01Module*) receiver;
+	auto dat = (NesConnector::Data*) module->getPort(IDX_CART)->data;
+	dat->paddr = data & 0xFFFF;
+	return Status::SUCCESS;
+}
+
+Status NESCM01Module::prd_receive(Module* receiver, u64 data) {
+	auto module = (NESCM01Module*) receiver;
+	if (data & 0x1) {
+		auto dat = (NesConnector::Data*) module->getPort(IDX_CART)->data;
+		module->sendToPort(IDX_CART, NesConnector::toCartridgeData(0, 0, 0, 1));
+		module->sendToPort(IDX_PDATA, dat->pdata);
+	}
+	return Status::SUCCESS;
+}
+
 
 } // namespace nes
 

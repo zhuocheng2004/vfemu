@@ -12,6 +12,7 @@ using namespace std::chrono_literals;
 
 
 static int _log(const char* fmt, ...) {
+	return 0;
 	va_list args;
 	int n = 0;
 	va_start(args, fmt);
@@ -99,23 +100,20 @@ void NESCT01Module::reset() {
 
 void NESCT01Module::action() {
 	u16 pc_saved = pc;
+
+	static int bcnt = -1;
+	if (pc_saved == 0x0)
+		bcnt = 0;
+
+	if (bcnt >= 0) {
+		char ch = getchar();
+		if (ch == 'c')
+			bcnt = -1;
+	}
+
 	u8 instr = loadData(pc++);
 	_log("    <%04X>  %02X", pc_saved, instr);
 
-	static int bcnt = -1;
-	static const int M = 1024; 
-	if (bcnt >= 0) {
-		std::this_thread::sleep_for(200ms);
-		if (bcnt >= M) {
-			getchar();
-			bcnt = -1;
-		}
-	} else {
-		bcnt = -1;
-	}
-
-	if (pc_saved == 0x8e59)
-		bcnt = 0;
 
 	switch (instr & 0x3) {
 		case 0:
@@ -131,7 +129,7 @@ void NESCT01Module::action() {
 			action_other(instr);
 			break;
 	}
-	putchar('\n');
+	_log("\n");
 }
 
 
@@ -215,6 +213,10 @@ void NESCT01Module::action_control(u8 instr) {
 					p |= (v & 0xC0);
 					_log("\t\tBIT  [%04X]\t\t(flag=%02X, [%04X]=%02X)", addr, p, addr, v);
 					break;
+				case 0x40:	// JMP a
+					pc = addr;
+					_log("\t\tJMP  [%04X]", addr);
+					break;
 			}
 			break;
 		case 0x10:	// rel
@@ -287,11 +289,11 @@ void NESCT01Module::action_alu(u8 instr) {
 			switch (instr & 0xE0) {
 				case 0x00:	// ORA #i
 					adjustZN(a |= v);
-					_log("\t\tORA  %02X\t\t(A=%02X)", v, a);
+					_log("\t\tORA  %02X\t\t\t(A=%02X)", v, a);
 					break;
 				case 0x20:	// AND #i
 					adjustZN(a &= v);
-					_log("\t\tAND  %02X\t\t(A=%02X)", v, a);
+					_log("\t\tAND  %02X\t\t\t(A=%02X)", v, a);
 					break;
 				case 0xA0:	// LDA #i
 					adjustZN(a = v);
@@ -405,6 +407,10 @@ void NESCT01Module::action_mv(u8 instr) {
 			break;
 		case 0x08:
 			switch (instr & 0xE0) {
+				case 0x80:	// TXA
+					adjustZN(a = x);
+					_log("\t\t\tTXA\t\t\t(A=%02X)", a);
+					break;
 				case 0xC0:	// DEX
 					adjustZN(--x);
 					_log("\t\t\tDEX\t\t\t(X=%02X)", x);
@@ -417,13 +423,19 @@ void NESCT01Module::action_mv(u8 instr) {
 		case 0x0C:	// a
 			addrl = loadData(pc++);
 			addrh = loadData(pc++);
-			addr = addrl + (addrh << 4);
+			addr = addrl + (addrh << 8);
 			_log(" %02X", addrl);
 			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
 				case 0x80:	// STX a
 					storeData(addr, x);
-					_log("\t\tSTX  [%04X]\t\t(X=)", addr, x);
+					_log("\t\tSTX  [%04X]\t\t(X=%02X)", addr, x);
+					break;
+				case 0xE0:	// INC a
+					v = loadData(addr);
+					adjustZN(++v);
+					storeData(addr, v);
+					_log("\t\tINC  [%04X]\t\t([%04X]=%02X)", addr, addr, v);
 					break;
 			}
 			break;

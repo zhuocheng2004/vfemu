@@ -38,9 +38,9 @@ public:
 		std::make_pair("rw_ppu", new Port("pin1")),
 		std::make_pair("addr", new Port("pin16", addr_receive)),
 		std::make_pair("data", new Port("pin8", data_receive)),
-		std::make_pair("prd", new Port("pin1")),
+		std::make_pair("prd", new Port("pin1", prd_receive)),
 		std::make_pair("pwr", new Port("pin1")),
-		std::make_pair("paddr", new Port("pin16")),
+		std::make_pair("paddr", new Port("pin16", paddr_receive)),
 		std::make_pair("pdata", new Port("pin8")),
 		std::make_pair("cart", new Port("nes:nesconn", cart_receive)),
 	}) { }
@@ -61,6 +61,8 @@ private:
 	static Status addr_receive(Module*, u64);
 	static Status data_receive(Module*, u64);
 	static Status cart_receive(Module*, u64);
+	static Status paddr_receive(Module*, u64);
+	static Status prd_receive(Module*, u64);
 };
 
 
