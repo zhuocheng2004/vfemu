@@ -9,6 +9,10 @@ namespace vfemu {
 namespace nes {
 
 
+#define ROWS	30
+#define COLUMNS	32
+
+
 Status NESPPUModule::init() {
 	vram = new u8[0x800];
 
@@ -60,6 +64,14 @@ Status NESPPUModule::rw_receive(Module* receiver, u64 signal) {
 				module->sendToPort(IDX_DATA, data);
 				break;
 			case 0x7:	// PPUDATA
+				paddr = module->paddr;
+				//printf("  { PPU: want to read data @%04X }  ", paddr);
+				if ((paddr & 0xE000) == 0) {
+					// CHR ROM
+					data = module->getChrData(paddr);
+					module->sendToPort(IDX_DATA, data);
+					module->paddr += 1;
+				}
 				break;
 		}
 	} else {	// write
@@ -104,6 +116,7 @@ Status NESPPUModule::rw_receive(Module* receiver, u64 signal) {
 					// nametable
 					paddr &= 0x7FF;
 					module->vram[paddr] = data;
+					//printf("  { PPU NT write %02X to %04X }  ", data, 0x2000 + paddr);
 					module->paddr += 1;
 				}
 				break;
@@ -142,7 +155,7 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 
 	window = SDL_CreateWindow("NES Toy Simulator",
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-		(32 * 8) * 2, (30 * 8) * 2, 
+		(COLUMNS * 8) * 2, (ROWS * 8) * 2, 
 		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if (!window)
 		return;
@@ -154,12 +167,12 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 	texture = SDL_CreateTexture(renderer, 
 		SDL_PIXELFORMAT_RGBA8888,
 		SDL_TEXTUREACCESS_STREAMING,
-		32 * 8,  30 * 8);
+		COLUMNS * 8,  ROWS * 8);
 	if (!texture)
 		return;
 
 	bool quit = false;
-	u32* pixels = new u32[(32 * 8) * (30 * 8)];
+	u32* pixels = new u32[(COLUMNS * 8) * (ROWS * 8)];
 	SDL_Event event;
 	const unsigned int delta = 1000 / 60;
 	Uint32 timer = SDL_GetTicks(), passed = 0;
@@ -202,7 +215,8 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 			module->vblank = false;
 			fillPixels(module, pixels);
 			module->vblank = true;
-			SDL_UpdateTexture(texture, NULL, pixels, (32 * 8) * 4);
+			module->sendToPort(IDX_INT, 0x1);	// tell CPU
+			SDL_UpdateTexture(texture, NULL, pixels, (COLUMNS * 8) * 4);
 			/*  ========  */
 
 			SDL_SetRenderTarget(renderer, NULL);
@@ -226,17 +240,19 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 
 
 void NESPPUModule::fillPixels(NESPPUModule* module, u32* pixels) {
-	for (int i = 0; i < 16; i++) {
-		for (int j = 0; j < 16; j++) {
-			for (int r = 0; r < 8; r++) {
-				u8 data = module->getChrData((1 << 12) + (i << 8) + (j << 4) + r);
+	for (int row = 0; row < ROWS; row++) {
+		for (int col = 0; col < COLUMNS; col++) {
+			u8 tileIdx = module->vram[(module->baseNameTable & 0x7FF) + row * COLUMNS + col];
+			for (int l = 0; l < 8; l++) {
+				u8 data = module->getChrData(module->bgPTable + (tileIdx << 4) + (0 << 3) + l);
+				int idx = (8 * row + l) * (COLUMNS * 8) + (8 * col);
 				for (int c = 0; c < 8; c++) {
-					int idx = (8 * i + r) * (32 * 8) + (8 * j + c);
 					if (data & 0x80)
 						pixels[idx] = 0xFFFFFFFF;
 					else
 						pixels[idx] = 0x00000000;
 					data <<= 1;
+					idx++;
 				}
 			}
 		}

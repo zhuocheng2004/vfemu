@@ -15,6 +15,7 @@
 #ifndef VFEMU_NES_NESCT01_H
 #define VFEMU_NES_NESCT01_H
 
+#include <mutex>
 #include <vfemu/Module.h>
 #include <nes/nes.h>
 
@@ -43,8 +44,14 @@ public:
 	static const u8 MSK_B = 0x30, MSK_OVERFLOW = 0x40, MSK_NEG = 0x80;
 
 private:
-	/** is CPU running */
+	/** is CPU running? */
 	bool		running = false;
+	
+	/** level of NMI interrupt handling */
+	int			in_nmi = 0;
+
+	/** action lock */
+	std::mutex	lock;
 
 	u8		data = 0;
 
@@ -88,14 +95,14 @@ private:
 	}
 
 	u8 adjustZN(u8 v);
-	u8 add(u8 a1, u8 a2);
+	u8 add(u8 a1, u8 a2, u8 carry);
 	u8 sub(u8 a1, u8 a2);
 
 	u16 branch(u8 offset);
 
 	void reset();
-
 	void action();
+	void branch_irq(u16 vector_addr);
 
 	void action_control(u8 instr);
 	void action_alu(u8 instr);
