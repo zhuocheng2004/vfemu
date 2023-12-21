@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include <thread>
 #include <SDL2/SDL.h>
 #include <nes/nesppu.h>
 
@@ -7,6 +8,8 @@
 namespace vfemu {
 
 namespace nes {
+
+using namespace std::chrono_literals;
 
 
 #define ROWS	30
@@ -108,17 +111,40 @@ Status NESPPUModule::rw_receive(Module* receiver, u64 signal) {
 					paddr |= ((u16) data << 8);
 					module->paddr = paddr;
 				}
+				//printf("  { PPU set addr to %04X }  ", paddr);
 				module->w++;
 				break;
 			case 0x7:	// PPUDATA
 				paddr = module->paddr;
-				if ((paddr & 0xE000) == 0x2000) {
+				if ((paddr & 0xF000) == 0x2000 || 
+					((paddr & 0xF000) == 0x3000 && (paddr < 0x3F00))) {
 					// nametable
 					paddr &= 0x7FF;
 					module->vram[paddr] = data;
-					//printf("  { PPU NT write %02X to %04X }  ", data, 0x2000 + paddr);
-					module->paddr += 1;
 				}
+
+				u8 paletteIdx = 0, fineIdx;
+				if ((paddr & 0xFFE0) == 0x3F00) {
+					// palette
+					paletteIdx = (paddr & 0x000F) >> 2;
+					fineIdx = paddr & 0x0003;
+					if ((paddr & 0x000F) == 0x0000) {
+						// universal background
+						module->universalBGColor = data;
+						for (int i = 0; i < 3; i++) {
+							module->bgPalettes[i][0] = data;
+							module->spPalettes[i][0] = data;
+						}
+					} else if (paddr & 0x0010) {
+						// sprite palette
+						module->spPalettes[paletteIdx][fineIdx] = data;
+					} else {
+						// background palette
+						module->bgPalettes[paletteIdx][fineIdx] = data;
+					}
+				}
+
+				module->paddr += 1;
 				break;
 		}
 	}
@@ -176,6 +202,8 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 	SDL_Event event;
 	const unsigned int delta = 1000 / 60;
 	Uint32 timer = SDL_GetTicks(), passed = 0;
+
+	std::this_thread::sleep_for(200ms);	// delibrate delay
 
 	while (!quit) {
 		// limit FPS
@@ -239,19 +267,78 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 }
 
 
+static const u32 paletteRGBs[] = {
+	// RGBA
+	0x6D6D6DFF, 0x002491FF, 0x0000DAFF, 0x6D48DAFF,
+	0x91006DFF, 0xB6006DFF, 0xB62400FF, 0x914800FF,
+	0x6D4800FF, 0x244800FF, 0x006D24FF, 0x009100FF,
+	0x004848FF, 0x000000FF, 0x000000FF, 0x000000FF,
+
+	0xB6B6B6FF, 0x006DDAFF, 0x0048FFFF, 0x9100FFFF,
+	0xB600FFFF, 0xFF0091FF, 0xFF0000FF, 0xDA6D00FF,
+	0x916D00FF, 0x249100FF, 0x009100FF, 0x00B66DFF,
+	0x009191FF, 0x000000FF, 0x000000FF, 0x000000FF,
+
+	0xFFFFFFFF, 0x6DB6FFFF, 0x9191FFFF, 0xB66DFFFF,
+	0xFF00FFFF, 0xFF6D91FF, 0xFF9100FF, 0xFFB600FF,
+	0xB6B600FF, 0x6DB600FF, 0x00FF00FF, 0x48FFDAFF,
+	0x00FFFFFF, 0x000000FF, 0x000000FF, 0x000000FF,
+
+	0xFFFFFFFF, 0xB6DAFFFF, 0xDAB6FFFF, 0xFFB6FFFF,
+	0xFF91FFFF, 0xFFB6B6FF, 0xFFDA91FF, 0xFFFF48FF,
+	0xFFFF6DFF, 0xB6FF48FF, 0x91FF6DFF, 0x48FFDAFF,
+	0x91DAFFFF, 0x000000FF, 0x000000FF, 0x000000FF,
+};
+
+
 void NESPPUModule::fillPixels(NESPPUModule* module, u32* pixels) {
+	u16 ntBase = module->baseNameTable & 0x7FF;
+	u16 bgPTable = module->bgPTable;
+	u8*	vram = module->vram;
+	static u8* bgChrCache = new u8[0x1000];
+
+	// refresh CHR ROM Cache
+	// in the future, we should save each of them as texture
+	for (int i = 0; i < ((16*16)<<4); i += (1<<4)) {
+		for (int l = 0; l < 8; l++) {
+			bgChrCache[i + (0 << 3) + l] = module->getChrData(bgPTable + i + (0 << 3) + l);
+			bgChrCache[i + (1 << 3) + l] = module->getChrData(bgPTable + i + (1 << 3) + l);
+		}
+	}
+
+	// build palette
+	static u32 bgPalettes[4][4];
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) 
+			bgPalettes[i][j] = paletteRGBs[module->bgPalettes[i][j]];
+	}
+
 	for (int row = 0; row < ROWS; row++) {
 		for (int col = 0; col < COLUMNS; col++) {
-			u8 tileIdx = module->vram[(module->baseNameTable & 0x7FF) + row * COLUMNS + col];
+			u8 tileIdx = vram[ntBase + row * COLUMNS + col];
+			u8 addrData = vram[ntBase + 0x03C0 + (row >> 2) * (COLUMNS / 4) + (col >> 2)];
+			u8 addrIdx;
+			if (row & 0x1) {
+				if (col & 0x1)
+					addrIdx = (addrData >> 6) & 0x3;
+				else
+					addrIdx = (addrData >> 4) & 0x3;
+			} else {
+				if (col & 0x1)
+					addrIdx = (addrData >> 2) & 0x3;
+				else
+					addrIdx = (addrData >> 0) & 0x3;
+			}
 			for (int l = 0; l < 8; l++) {
-				u8 data = module->getChrData(module->bgPTable + (tileIdx << 4) + (0 << 3) + l);
+				u8 data1 = bgChrCache[(tileIdx << 4) + (0 << 3) + l];
+				u8 data2 = bgChrCache[(tileIdx << 4) + (1 << 3) + l];
+				u8 plIdx = 0;
 				int idx = (8 * row + l) * (COLUMNS * 8) + (8 * col);
-				for (int c = 0; c < 8; c++) {
-					if (data & 0x80)
-						pixels[idx] = 0xFFFFFFFF;
-					else
-						pixels[idx] = 0x00000000;
-					data <<= 1;
+				for (int c = 7; c >= 0; c--) {
+					plIdx = (data2 >> c) & 0x1;
+					plIdx <<= 1;
+					plIdx |= (data1 >> c) & 0x1;
+					pixels[idx] = bgPalettes[addrIdx][plIdx];
 					idx++;
 				}
 			}

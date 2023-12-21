@@ -64,6 +64,10 @@ private:
 
 	u8*		vram = nullptr;
 
+	u8		universalBGColor;
+	u8		bgPalettes[4][4];
+	u8		spPalettes[4][4];
+
 	bool		vblank = true;
 	bool		nmi = false;
 	//bool		inc = true;

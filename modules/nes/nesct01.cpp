@@ -55,7 +55,7 @@ Status NESCT01Module::nmi_receive(Module* receiver, u64 signal) {
 		//module->lock.lock();
 		//module->branch_irq(0xFFFA);
 		//module->lock.unlock();
-		if (module->in_nmi == 0 && module->lock.try_lock()) {
+		if (module->in_nmi < 1 && module->lock.try_lock()) {
 			t1 = std::chrono::steady_clock::now();
 			module->branch_irq(0xFFFA);
 			module->lock.unlock();
@@ -104,12 +104,9 @@ u8 NESCT01Module::sub(u8 a1, u8 a2) {
 }
 
 u16 NESCT01Module::branch(u8 offset) {
-	u8 pcl = pc & 0xff;
-	u16 pch = pc & 0xff00;
+	pc += offset;
 	if (offset & 0x80) {	// negative
-		pc = pch + ((pcl + offset) & 0xff);
-	} else {
-		pc += offset;
+		pc -= 0x100;
 	}
 	return pc;
 }
@@ -135,14 +132,8 @@ static u16 advance_addr = 0x0000;
 void NESCT01Module::action() {
 	u16 pc_saved = pc;
 
-	// only break the first time
-	if (start_break && pc_saved == 0x8082) {
-		bcnt = 0; dump = true;
-		start_break = false;
-	}
-
-	if (advance_addr && pc_saved == advance_addr) {
-		bcnt = 0; dump = true;
+	if (advance_addr && pc == advance_addr) {
+		bcnt = 0; //dump = true;
 		advance_addr = 0x0000;
 	}
 
@@ -152,7 +143,7 @@ void NESCT01Module::action() {
 		bcnt++;
 
 		if (ch == 'c') {
-			bcnt = -1; dump = false;
+			bcnt = -1; //dump = false;
 		} else if (ch == 'r') {
 			puts("  ==== registers ====  ");
 			printf("  A=%02X, X=%02X, Y=%02X \n", a, x, y);
@@ -164,7 +155,7 @@ void NESCT01Module::action() {
 		} else if (ch == 'a') {
 			scanf("%hx", &advance_addr);
 			getchar();
-			bcnt = -1; dump = false;
+			bcnt = -1; //dump = false;
 			printf("Advancing to %04X \n", advance_addr);
 		} else if (ch == 'x') {
 			u16 addr;
@@ -209,7 +200,13 @@ void NESCT01Module::branch_irq(u16 vector_addr) {
 	u16 addr = addrl + (addrh << 8);
 	pc = addr;
 	printf("  ==== INT @[%04X]=%04X ====  \n", vector_addr, addr);
-	//bcnt = 0;
+	
+	// only break the first time
+	if (start_break) {
+		bcnt = 0; //dump = true;
+		start_break = false;
+	}
+			
 }
 
 
@@ -252,7 +249,7 @@ void NESCT01Module::action_control(u8 instr) {
 					v = loadData(pc++);
 					_log(" %02X", v);
 					adjustZN(y = v);
-					_log("\t\tLDY  %02X", v);
+					_log("\t\tLDY  %02X\t\t\t(Y=%02X)", v, y);
 					break;
 				case 0xC0:	// CPY #i
 					v = loadData(pc++);
@@ -268,20 +265,58 @@ void NESCT01Module::action_control(u8 instr) {
 					p ^= MSK_CARRY;
 					_log("\t\tCPX  %02X\t\t\t(X=%02X, flag=%02X)", v, x, p);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x04:	// z
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
+				case 0x20:	// BIT	z
+					v = loadData(zaddr);
+					if ((a & v) == 0)
+						p |= MSK_ZERO;
+					else
+						p &= ~MSK_ZERO;
+					p &= ~(MSK_OVERFLOW | MSK_NEG);
+					p |= (v & 0xC0);
+					_log("\t\tBIT  [%02X]\t\t(flag=%02X, [%04X]=%02X)", zaddr, p, zaddr, v);
+					break;
 				case 0x80:	// STY z
 					storeData(zaddr, y);
 					_log("\t\tSTY  [%02X]\t\t(Y=%02X)", zaddr, y);
 					break;
+				case 0xA0:	// LDY z
+					adjustZN(y = loadData(zaddr));
+					_log("\t\tLDY  [%02X]\t\t(Y=%02X)", zaddr, y);
+					break;
+				case 0xC0:	// CPY z
+					v = loadData(zaddr);
+					sub(y, v);
+					p ^= MSK_CARRY;
+					_log("\t\tCPY  [%02X]\t\t(Y=%02X, [%02X]=%02X, flag=%02X)", zaddr, y, zaddr, loadData(zaddr), p);
+					break;
+				case 0xE0:	// CPX z
+					v = loadData(zaddr);
+					sub(x, v);
+					p ^= MSK_CARRY;
+					_log("\t\tCPX  [%02X]\t\t(X=%02X, [%02X]=%02X, flag=%02X)", zaddr, x, zaddr, loadData(zaddr), p);
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x08:
 			switch (instr & 0xE0) {
+				case 0x00:	// PHP
+					pushStack(p);
+					_log("\t\t\tPHP\t\t\t(flag=%02X)", p);
+					break;
+				case 0x20:	// PLP
+					p = popStack();
+					_log("\t\t\tPLP\t\t\t(flag=%02X)", p);
+					break;
 				case 0x40:	// PHA
 					pushStack(a);
 					_log("\t\t\tPHA\t\t\t(A=%02X)", a);
@@ -306,6 +341,8 @@ void NESCT01Module::action_control(u8 instr) {
 					adjustZN(++x);
 					_log("\t\t\tINX\t\t\t(X=%02X)", x);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x0C:	// a
@@ -343,6 +380,8 @@ void NESCT01Module::action_control(u8 instr) {
 					adjustZN(y = loadData(addr));
 					_log("\t\tLDY  [%04X]\t\t(Y=%02X)", addr, y);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x10:	// rel
@@ -353,6 +392,11 @@ void NESCT01Module::action_control(u8 instr) {
 					if (!(p & MSK_NEG))
 						branch(zaddr);
 					_log("\t\tBPL  +%02X\t\t(flag=%02X)", zaddr, p);
+					break;
+				case 0x20:	// BMI
+					if (p & MSK_NEG)
+						branch(zaddr);
+					_log("\t\tBMI  +%02X\t\t(flag=%02X)", zaddr, p);
 					break;
 				case 0x80:	// BCC
 					if (!(p & MSK_CARRY))
@@ -373,6 +417,21 @@ void NESCT01Module::action_control(u8 instr) {
 					if (p & MSK_ZERO)
 						branch(zaddr);
 					_log("\t\tBEQ  +%02X", zaddr);
+					break;
+				default:
+					bcnt = 0;
+			}
+			break;
+		case 0x14:	// d,x
+			zaddr = loadData(pc++);
+			_log(" %02X", zaddr);
+			switch (instr & 0xE0) {
+				case 0xA0:	// LDY d,x
+					adjustZN(y = loadData(zaddr + x));
+					_log("\t\tLDY  [%02X+x]\t\t(Y=%02X, X=%02X)", zaddr, y, x);
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x18:
@@ -401,8 +460,27 @@ void NESCT01Module::action_control(u8 instr) {
 					p &= ~MSK_DEC;
 					_log("\t\t\tCLD\t\t\t(flag=%02X)", p);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
+		case 0x1C:	// a,x
+			addrl = loadData(pc++);
+			addrh = loadData(pc++);
+			addr = addrl + (addrh << 8);
+			_log(" %02X", addrl);
+			_log(" %02X", addrh);
+			switch (instr & 0xE0) {
+				case 0xA0:	// LDY a,x
+					adjustZN(y = loadData(addr + x));
+					_log("\t\tLDY  [%04X+x]\t\t(Y=%02X, X=%02X)", addr, y, x);
+					break;
+				default:
+					bcnt = 0;
+			}
+			break;
+		default:
+					bcnt = 0;
 	}
 }
 
@@ -440,6 +518,17 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a = loadData(zaddr));
 					_log("\t\tLDA  [%02X]\t\t(A=%02X)", zaddr, a);
 					break;
+				case 0xC0:	// CMP z
+					sub(a, loadData(zaddr));
+					p ^= MSK_CARRY;
+					_log("\t\tCMP  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					break;
+				case 0xE0:	// SBC z
+					adjustZN(a = sub(a, loadData(zaddr)));
+					_log("\t\tSBC  [%02X]\t\t(A=%02X, [%02X]=%02X)", zaddr, a, zaddr, loadData(zaddr));
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x08:	// #i
@@ -453,6 +542,10 @@ void NESCT01Module::action_alu(u8 instr) {
 				case 0x20:	// AND #i
 					adjustZN(a &= v);
 					_log("\t\tAND  %02X\t\t\t(A=%02X)", v, a);
+					break;
+				case 0x40:	// EOR #i
+					adjustZN(a ^= v);
+					_log("\t\tEOR  %02X\t\t\t(A=%02X)", v, a);
 					break;
 				case 0x60:	// ADC #i
 					adjustZN(a = add(a, v, p & MSK_CARRY));
@@ -471,6 +564,8 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a = sub(a, v));
 					_log("\t\tSBC  %02X\t\t\t(A=%02X)", v, a);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x0C:	// a
@@ -493,6 +588,13 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a = loadData(addr));
 					_log("\t\tLDA  [%04X]\t\t(A=%02X)", addr, a);
 					break;
+				case 0xC0:	// CMP a
+					sub(a, loadData(addr));
+					p ^= MSK_CARRY;
+					_log("\t\tCMP  [%04X]\t\t(flag=%02X, [%04X]=%02X)", v, p, addr, loadData(addr));
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x10:	// (d),y
@@ -510,6 +612,34 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a = loadData(addr + y));
 					_log("\t\tLDA  [[%02X]+y]\t\t(A=%02X, Y=%02X, [%02X]=%04X)", v, a, y, v, addr);
 					break;
+				case 0xC0:	// CMP (d),y
+					sub(a, loadData(addr + y));
+					p ^= MSK_CARRY;
+					_log("\t\tCMP  [[%02X]+y]\t\t(A=%02X, Y=%02X, [%02X]=%04X, flag=%02X)", v, a, y, v, addr, p);
+					break;
+				default:
+					bcnt = 0;
+			}
+			break;
+		case 0x14:	// d,x
+			zaddr = loadData(pc++);
+			_log(" %02X", zaddr);
+			switch (instr & 0xE0) {
+				case 0x80:	// STA d,x
+					storeData(zaddr + x, a);
+					_log("\t\tSTA  [%02X+x]\t\t(A=%02X, X=%02X)", zaddr, a, x);
+					break;
+				case 0xA0:	// LDA d,x
+					adjustZN(a = loadData(zaddr + x));
+					_log("\t\tLDA  [%02X+x]\t\t(A=%02X, X=%02X)", zaddr, a, x);
+					break;
+				case 0xC0:	// CMP d,x
+					sub(a, loadData(zaddr + x));
+					p ^= MSK_CARRY;
+					_log("\t\tCMP  [%02X+x]\t\t(A=%02X, X=%02X, flag=%02X)", zaddr, a, x, p);
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x18:	// a,y
@@ -519,6 +649,11 @@ void NESCT01Module::action_alu(u8 instr) {
 			_log(" %02X", addrl);
 			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
+				case 0x60:	// ADC a,y
+					v = loadData(addr + y);
+					adjustZN(a = add(a, v, p & MSK_CARRY));
+					_log("\t\tADC  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
+					break;
 				case 0x80:	// STA a,y
 					storeData(addr + y, a);
 					_log("\t\tSTA  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
@@ -527,10 +662,17 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a = loadData(addr + y));
 					_log("\t\tLDA  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
 					break;
+				case 0xC0:	// CMP a,y
+					sub(a, loadData(addr + y));
+					p ^= MSK_CARRY;
+					_log("\t\tCMP  [%04X+y]\t\t(flag=%02X, Y=%02X, [%04X+y]=%02X)", addr, p, y, addr, loadData(addr + y));
+					break;
 				case 0xE0:	// SBC a,y
 					adjustZN(a = sub(a, loadData(addr + y)));
 					_log("\t\tSBC  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x1C:	// a,x
@@ -548,6 +690,10 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a &= loadData(addr + x));
 					_log("\t\tAND  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
 					break;
+				case 0x40:	// EOR a,x
+					adjustZN(a ^= loadData(addr + x));
+					_log("\t\tEOR  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
+					break;
 				case 0x80:	// STA a,x
 					storeData(addr + x, a);
 					_log("\t\tSTA  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
@@ -556,8 +702,17 @@ void NESCT01Module::action_alu(u8 instr) {
 					adjustZN(a = loadData(addr + x));
 					_log("\t\tLDA  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
 					break;
+				case 0xC0:	// CMP a,x
+					sub(a, loadData(addr + x));
+					p ^= MSK_CARRY;
+					_log("\t\tCMP  [%04X+x]\t\t(flag=%02X, X=%02X, [%04X+x]=%02X)", addr, p, x, addr, loadData(addr + x));
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
+		default:
+					bcnt = 0;
 	}
 }
 
@@ -575,12 +730,44 @@ void NESCT01Module::action_mv(u8 instr) {
 					adjustZN(x = v);
 					_log("\t\tLDX  %02X", x);
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x04:	// z
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
+				case 0x00:	// ASL
+					v2 = loadData(zaddr);
+					adjustZN(v = (v2 << 1));
+					storeData(zaddr, v);
+					if (v2 & 0x80)
+						p |= MSK_CARRY;
+					else
+						p &= ~MSK_CARRY;
+					_log("\t\tASL  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					break;
+				case 0x20:	// ROL z
+					v2 = loadData(zaddr);
+					adjustZN(v = (v2 << 1) + (p & MSK_CARRY));
+					storeData(zaddr, v);
+					if (v2 & 0x80)
+						p |= MSK_CARRY;
+					else
+						p &= ~MSK_CARRY;
+					_log("\t\tROL  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					break;
+				case 0x40:	// LSR z
+					v = loadData(zaddr);
+					if (v & 0x1)
+						p | MSK_CARRY;
+					else
+						p & ~MSK_CARRY;
+					v >>= 1;
+					storeData(zaddr, v);
+					_log("\t\tLSR  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					break;
 				case 0x60:	// ROR z
 					v2 = loadData(zaddr);
 					adjustZN(v = (v2 >> 1) + (p & MSK_CARRY) * 0x80);
@@ -611,6 +798,8 @@ void NESCT01Module::action_mv(u8 instr) {
 					storeData(zaddr, v);
 					_log("\t\tINC  [%02X]\t\t([%02X]=%02X)", zaddr, zaddr, loadData(zaddr));
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x08:
@@ -641,6 +830,15 @@ void NESCT01Module::action_mv(u8 instr) {
 					a >>= 1;
 					_log("\t\t\tLSR\t\t\t(A=%02X, flag=%02X)", a, p);
 					break;
+				case 0x60:	// ROR
+					v = a;
+					adjustZN(a = (v >> 1) + (p & MSK_CARRY) * 0x80);
+					if (v & 0x1)
+						p |= MSK_CARRY;
+					else
+						p &= ~MSK_CARRY;
+					_log("\t\t\tROR\t\t\t(A=%02X, flag=%02X)", a, p);
+					break;
 				case 0x80:	// TXA
 					adjustZN(a = x);
 					_log("\t\t\tTXA\t\t\t(A=%02X)", a);
@@ -656,6 +854,8 @@ void NESCT01Module::action_mv(u8 instr) {
 				case 0xE0:	// NOP
 					_log("\t\t\tNOP");
 					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x0C:	// a
@@ -665,6 +865,26 @@ void NESCT01Module::action_mv(u8 instr) {
 			_log(" %02X", addrl);
 			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
+				case 0x20:	// ROL a
+					v2 = loadData(addr);
+					adjustZN(v = (v2 << 1) + (p & MSK_CARRY));
+					storeData(addr, v);
+					if (v2 & 0x80)
+						p |= MSK_CARRY;
+					else
+						p &= ~MSK_CARRY;
+					_log("\t\tROL  [%04X]\t\t([%04X]=%02X, flag=%02X)", addr, addr, loadData(addr), p);
+					break;
+				case 0x40:	// LSR a
+					v = loadData(addr);
+					if (v & 0x1)
+						p | MSK_CARRY;
+					else
+						p & ~MSK_CARRY;
+					v >>= 1;
+					storeData(addr, v);
+					_log("\t\tLSR  [%04X]\t\t([%04X]=%02X, flag=%02X)", addr, addr, loadData(addr), p);
+					break;
 				case 0x60:	// ROR a
 					v2 = loadData(addr);
 					adjustZN(v = (v2 >> 1) + (p & MSK_CARRY) * 0x80);
@@ -695,6 +915,28 @@ void NESCT01Module::action_mv(u8 instr) {
 					storeData(addr, v);
 					_log("\t\tINC  [%04X]\t\t([%04X]=%02X)", addr, addr, v);
 					break;
+				default:
+					bcnt = 0;
+			}
+			break;
+		case 0x14:	// d,x
+			zaddr = loadData(pc++);
+			_log(" %02X", zaddr);
+			switch (instr & 0xE0) {
+				case 0xC0:	// DEC d,x
+					v = loadData(zaddr + x);
+					adjustZN(--v);
+					storeData(zaddr + x, v);
+					_log("\t\tDEC  [%02X+x]\t\t([%02X+x]=%02X, X=%02X)", zaddr, zaddr, v, x);
+					break;
+				case 0xE0:	// INC d,x
+					v = loadData(zaddr + x);
+					adjustZN(++v);
+					storeData(zaddr + x, v);
+					_log("\t\tINC  [%02X+x]\t\t([%02X+x]=%02X, X=%02X)", zaddr, zaddr, v, x);
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x18:
@@ -703,6 +945,12 @@ void NESCT01Module::action_mv(u8 instr) {
 					sp = x;
 					_log("\t\t\tTXS\t\t\t(S=%02X)", sp);
 					break;
+				case 0xA0:	// TSX
+					adjustZN(x = sp);
+					_log("\t\t\tTSX\t\t\t(X=%02X)", x);
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
 		case 0x1C:	// a,[x|y]
@@ -712,22 +960,48 @@ void NESCT01Module::action_mv(u8 instr) {
 			_log(" %02X", addrl);
 			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
+				case 0x20:	// ROL a,x
+					v2 = loadData(addr + x);
+					adjustZN(v = (v2 << 1) + (p & MSK_CARRY));
+					storeData(addr + x, v);
+					if (v2 & 0x80)
+						p |= MSK_CARRY;
+					else
+						p &= ~MSK_CARRY;
+					_log("\t\tROR  [%04X+x]\t\t([%04X+x]=%02X, X=%02X, flag=%02X)", addr, addr, loadData(addr + x), x, p);
+					break;
 				case 0x60:	// ROR a,x
-					v2 = loadData(addr + y);
+					v2 = loadData(addr + x);
 					adjustZN(v = (v2 >> 1) + (p & MSK_CARRY) * 0x80);
-					storeData(addr + y, v);
+					storeData(addr + x, v);
 					if (v2 & 0x1)
 						p |= MSK_CARRY;
 					else
 						p &= ~MSK_CARRY;
-					_log("\t\tROR  [%04X+y]\t\t([%04X+y]=%02X, Y=%02X, flag=%02X)", addr, addr, loadData(addr + y), y, p);
+					_log("\t\tROR  [%04X+x]\t\t([%04X+x]=%02X, X=%02X, flag=%02X)", addr, addr, loadData(addr + x), x, p);
 					break;
 				case 0xA0:	// LDX a,y
 					adjustZN(x = loadData(addr + y));
 					_log("\t\tLDX  [%04X+y]\t\t(X=%02X, Y=%02X)", addr, x, y);
-				break;
+					break;
+				case 0xC0:	// DEC a,x
+					v = loadData(addr + x);
+					adjustZN(--v);
+					storeData(addr + x, v);
+					_log("\t\tINC  [%04X+x]\t\t([%04X+x]=%02X)", addr, addr, v);
+					break;
+				case 0xE0:	// INC a,x
+					v = loadData(addr + x);
+					adjustZN(++v);
+					storeData(addr + x, v);
+					_log("\t\tINC  [%04X+x]\t\t([%04X+x]=%02X)", addr, addr, v);
+					break;
+				default:
+					bcnt = 0;
 			}
 			break;
+		default:
+					bcnt = 0;
 	}
 }
 
