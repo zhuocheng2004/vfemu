@@ -55,7 +55,7 @@ Status NESCT01Module::nmi_receive(Module* receiver, u64 signal) {
 		//module->lock.lock();
 		//module->branch_irq(0xFFFA);
 		//module->lock.unlock();
-		if (module->in_nmi < 1 && module->lock.try_lock()) {
+		if (module->in_irq < 1 && module->lock.try_lock()) {
 			t1 = std::chrono::steady_clock::now();
 			module->branch_irq(0xFFFA);
 			module->lock.unlock();
@@ -71,12 +71,16 @@ Status NESCT01Module::data_receive(Module* receiver, u64 data) {
 }
 
 
-u8 NESCT01Module::adjustZN(u8 v) {
+u8 NESCT01Module::adjustZ(u8 v) {
 	if (v == 0)
 		p |= MSK_ZERO;
 	else
 		p &= ~MSK_ZERO;
-	
+
+	return v;
+}
+
+u8 NESCT01Module::adjustN(u8 v) {
 	if (v & 0x80)
 		p |= MSK_NEG;
 	else
@@ -85,23 +89,83 @@ u8 NESCT01Module::adjustZN(u8 v) {
 	return v;
 }
 
-u8 NESCT01Module::add(u8 a1, u8 a2, u8 carry = 0) {
-	if (((u16) a1 + a2 + carry) & 0xff00)
+u8 NESCT01Module::add(u8 v1, u8 v2) {
+	u16 result = v1 + v2 + (p & MSK_CARRY);
+	if (result & 0xff00)
 		p |= MSK_CARRY;
 	else
 		p &= ~MSK_CARRY;
 
-	return adjustZN(a1 + a2 + carry);
+	return result & 0xff;
 }
 
-u8 NESCT01Module::sub(u8 a1, u8 a2) {
-	if (((short) a1 - a2) < 0)
-		p |= MSK_CARRY;
-	else
+u8 NESCT01Module::sub(u8 v1, u8 v2) {
+	u16 result = v1 - v2 + (p & MSK_CARRY) - 1;
+	if (result & 0xff00)
 		p &= ~MSK_CARRY;
+	else
+		p |= MSK_CARRY;
 	
-	return adjustZN(a1 - a2);
+	return result & 0xff;
 }
+
+void NESCT01Module::bit(u8 v) {
+	adjustZ(a & v);
+	adjustN(v);
+	if (v && 0x40)
+		p |= MSK_OVERFLOW;
+	else
+		p &= ~MSK_OVERFLOW;
+}
+
+void NESCT01Module::cmp(u8 v1, u8 v2) {
+	u16 diff = v1 - v2;
+	if (diff & 0xff00)
+		p &= ~MSK_CARRY;
+	else
+		p |= MSK_CARRY;
+	
+	adjustZN(diff & 0xff);
+}
+
+u8 NESCT01Module::asl(u8 v) {
+	if (v & 0x80)
+		p |= MSK_CARRY;
+	else
+		p &= ~MSK_CARRY;
+
+	return v << 1;
+}
+
+u8 NESCT01Module::lsr(u8 v) {
+	if (v & 0x01)
+		p |= MSK_CARRY;
+	else
+		p &= ~MSK_CARRY;
+
+	return v >> 1;
+}
+
+u8 NESCT01Module::rol(u8 v) {
+	u8 result = (v << 1) | (p & MSK_CARRY);
+	if (v & 0x80)
+		p |= MSK_CARRY;
+	else
+		p &= ~MSK_CARRY;
+
+	return result;
+}
+
+u8 NESCT01Module::ror(u8 v) {
+	u8 result = (v >> 1) | (p << 7);
+	if (v & 0x01)
+		p |= MSK_CARRY;
+	else
+		p &= ~MSK_CARRY;
+
+	return result;
+}
+
 
 u16 NESCT01Module::branch(u8 offset) {
 	pc += offset;
@@ -128,6 +192,9 @@ void NESCT01Module::reset() {
 static bool start_break = false;
 static int bcnt = -1;
 static u16 advance_addr = 0x0000;
+
+static bool break_invalid_op = true;
+static bool invalid_op = false;
 
 void NESCT01Module::action() {
 	u16 pc_saved = pc;
@@ -185,12 +252,16 @@ void NESCT01Module::action() {
 			break;
 	}
 	_log("\n");
+
+	if (break_invalid_op && invalid_op) {
+		puts("Invalid Opcode.");
+		invalid_op = false;
+		bcnt = 0;
+	}
 }
 
 void NESCT01Module::branch_irq(u16 vector_addr) {
-	if (in_nmi > 0)
-		puts("WARNING: nested IRQ handling");
-	in_nmi++;
+	in_irq++;
 	pushStack(pc >> 8);
 	pushStack(pc & 0xff);
 	pushStack(p);
@@ -211,324 +282,373 @@ void NESCT01Module::branch_irq(u16 vector_addr) {
 
 
 void NESCT01Module::action_control(u8 instr) {
-	u8 v = 0;	// instant value
-	u8 zaddr = 0;	// zero page addr
-	u8 addrl = 0, addrh = 0;
-	u16 addr, v3;	// absolute addr
+	u8 v = 0;
+	u8 zaddr = 0, addrl = 0, addrh = 0;
+	u16 addr, v3;
 	switch (instr & 0x1C) {
 		case 0x00:
 			switch (instr & 0xE0) {
+				case 0x00:	// BRK
+					branch_irq(0xFFFE);
+					p |= MSK_INT;
+					_log("\t\t\tBRK");
+					break;
 				case 0x20:	// JSR a
-					addrl = loadData(pc++);
-					addrh = loadData(pc++);
+					addrl = loadData(pc++); addrh = loadData(pc++);
+					_log(" %02X %02X", addrl, addrh);
 					addr = addrl + (addrh << 8);
-					_log(" %02X", addrl);
-					_log(" %02X", addrh);
 					v3 = pc - 1;
 					pushStack(v3 >> 8);
 					pushStack(v3 & 0xff);
 					pc = addr;
-					_log("\t\tJSR  [%04X]\t\t(S=%02X)", pc, sp);
+					_log("\t\tJSR\t%04X", addr);
 					break;
 				case 0x40:	// RTI
 					p = popStack();
-					addrl = popStack();
-					addrh = popStack();
-					pc = ((u16) addrh << 8) + addrl;
-					in_nmi--;
-					_log("\t\t\tRTI\t\t\t(pc=%04X, S=%02X)", pc, sp);
-					std::cout << "TIME: " << (std::chrono::steady_clock::now() - t1).count() << std::endl;
+					addrl = popStack(); addrh = popStack();
+					pc = (u16) addrl +(addrh << 8);
+					if (in_irq > 0)
+						in_irq--;
+					_log("\t\t\tRTI");
+					std::cout << "IRQ HANDLE TIME: " << (std::chrono::steady_clock::now() - t1).count() << std::endl;
 					break;
 				case 0x60:	// RTS
-					addrl = popStack();
-					addrh = popStack();
-					pc = ((u16) addrh << 8) + addrl + 1;
-					_log("\t\t\tRTS\t\t\t(pc=%04X, S=%02X)", pc, sp);
+					addrl = popStack(); addrh = popStack();
+					pc = (u16) addrl +(addrh << 8) + 1;
+					_log("\t\t\tRTS");
 					break;
 				case 0xA0:	// LDY #i
 					v = loadData(pc++);
 					_log(" %02X", v);
 					adjustZN(y = v);
-					_log("\t\tLDY  %02X\t\t\t(Y=%02X)", v, y);
+					_log("\t\tLDY\t%02X", v);
 					break;
 				case 0xC0:	// CPY #i
 					v = loadData(pc++);
 					_log(" %02X", v);
-					sub(y, v);
-					p ^= MSK_CARRY;
-					_log("\t\tCPY  %02X\t\t\t(Y=%02X, flag=%02X)", v, y, p);
+					cmp(y, v);
+					_log("\t\tCPY\t%02X", v);
 					break;
 				case 0xE0:	// CPX #i
 					v = loadData(pc++);
 					_log(" %02X", v);
-					sub(x, v);
-					p ^= MSK_CARRY;
-					_log("\t\tCPX  %02X\t\t\t(X=%02X, flag=%02X)", v, x, p);
+					cmp(x, v);
+					_log("\t\tCPX\t%02X", v);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
-		case 0x04:	// z
+		case 0x04:	// d
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
-				case 0x20:	// BIT	z
-					v = loadData(zaddr);
-					if ((a & v) == 0)
-						p |= MSK_ZERO;
-					else
-						p &= ~MSK_ZERO;
-					p &= ~(MSK_OVERFLOW | MSK_NEG);
-					p |= (v & 0xC0);
-					_log("\t\tBIT  [%02X]\t\t(flag=%02X, [%04X]=%02X)", zaddr, p, zaddr, v);
+				case 0x20:	// BIT d
+					bit(loadData(zaddr));
+					_log("\t\tBIT\t[%02X]", zaddr);
 					break;
-				case 0x80:	// STY z
+				case 0x80:	// STY d
 					storeData(zaddr, y);
-					_log("\t\tSTY  [%02X]\t\t(Y=%02X)", zaddr, y);
+					_log("\t\tSTY\t[%02X]", zaddr);
 					break;
-				case 0xA0:	// LDY z
+				case 0xA0:	// LDY d
 					adjustZN(y = loadData(zaddr));
-					_log("\t\tLDY  [%02X]\t\t(Y=%02X)", zaddr, y);
+					_log("\t\tLDY\t[%02X]", zaddr);
 					break;
-				case 0xC0:	// CPY z
-					v = loadData(zaddr);
-					sub(y, v);
-					p ^= MSK_CARRY;
-					_log("\t\tCPY  [%02X]\t\t(Y=%02X, [%02X]=%02X, flag=%02X)", zaddr, y, zaddr, loadData(zaddr), p);
+				case 0xC0:	// CPY d
+					cmp(y, loadData(zaddr));
+					_log("\t\tCPY\t[%02X]", zaddr);
 					break;
-				case 0xE0:	// CPX z
-					v = loadData(zaddr);
-					sub(x, v);
-					p ^= MSK_CARRY;
-					_log("\t\tCPX  [%02X]\t\t(X=%02X, [%02X]=%02X, flag=%02X)", zaddr, x, zaddr, loadData(zaddr), p);
+				case 0xE0:	// CPX d
+					cmp(x, loadData(zaddr));
+					_log("\t\tCPX\t[%02X]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x08:
 			switch (instr & 0xE0) {
 				case 0x00:	// PHP
 					pushStack(p);
-					_log("\t\t\tPHP\t\t\t(flag=%02X)", p);
+					_log("\t\t\tPHP");
 					break;
 				case 0x20:	// PLP
 					p = popStack();
-					_log("\t\t\tPLP\t\t\t(flag=%02X)", p);
+					_log("\t\t\tPLP");
 					break;
 				case 0x40:	// PHA
 					pushStack(a);
-					_log("\t\t\tPHA\t\t\t(A=%02X)", a);
+					_log("\t\t\tPHA");
 					break;
 				case 0x60:	// PLA
 					adjustZN(a = popStack());
-					_log("\t\t\tPLA\t\t\t(A=%02X)", a);
+					_log("\t\t\tPLA");
 					break;
 				case 0x80:	// DEY
 					adjustZN(--y);
-					_log("\t\t\tDEY\t\t\t(Y=%02X)", y);
+					_log("\t\t\tDEY");
 					break;
 				case 0xA0:	// TAY
 					adjustZN(y = a);
-					_log("\t\t\tTAY\t\t\t(Y=%02X)", y);
+					_log("\t\t\tTAY");
 					break;
 				case 0xC0:	// INY
 					adjustZN(++y);
-					_log("\t\t\tINY\t\t\t(Y=%02X)", y);
+					_log("\t\t\tINY");
 					break;
 				case 0xE0:	// INX
 					adjustZN(++x);
-					_log("\t\t\tINX\t\t\t(X=%02X)", x);
+					_log("\t\t\tINX");
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x0C:	// a
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
-				case 0x20:	// BIT	a
-					v = loadData(addr);
-					if ((a & v) == 0)
-						p |= MSK_ZERO;
-					else
-						p &= ~MSK_ZERO;
-					p &= ~(MSK_OVERFLOW | MSK_NEG);
-					p |= (v & 0xC0);
-					_log("\t\tBIT  [%04X]\t\t(flag=%02X, [%04X]=%02X)", addr, p, addr, v);
+				case 0x20:	// BIT a
+					bit(loadData(addr));
+					_log("\t\tBIT\t[%04X]");
 					break;
 				case 0x40:	// JMP a
 					pc = addr;
-					_log("\t\tJMP  %04X", addr);
+					_log("\t\tJMP\t%04X", addr);
 					break;
-				case 0x60:	// JMP [a]
-					addrl = loadData(addr);
-					addrh = loadData(addr + 1);
+				case 0x60:	// JMP (a)
+					addrl = loadData(addr); addrh = loadData(addr + 1);
 					pc = addrl + (addrh << 8);
-					_log("\t\tJMP  [%04X]\t\t([%04X]=%04X)", addr, addr, pc);
+					_log("\t\tJMP\t[%04X]", addr);
 					break;
 				case 0x80:	// STY a
 					storeData(addr, y);
-					_log("\t\tSTY  [%04X]\t\t(Y=%02X)", addr, y);
+					_log("\t\tSTY\t[%04X]", addr);
 					break;
 				case 0xA0:	// LDY a
 					adjustZN(y = loadData(addr));
-					_log("\t\tLDY  [%04X]\t\t(Y=%02X)", addr, y);
+					_log("\t\tLDY\t[%04X]", addr);
+					break;
+				case 0xC0:	// CPY a
+					cmp(y, loadData(addr));
+					_log("\t\tCPY\t[%04X]", addr);
+					break;
+				case 0xE0:	// CPX a
+					cmp(x, loadData(addr));
+					_log("\t\tCPX\t[%04X]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
-		case 0x10:	// rel
+		case 0x10:	// *+d
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
 				case 0x00:	// BPL
 					if (!(p & MSK_NEG))
 						branch(zaddr);
-					_log("\t\tBPL  +%02X\t\t(flag=%02X)", zaddr, p);
+					_log("\t\tBPL\t+%02X", zaddr);
 					break;
 				case 0x20:	// BMI
 					if (p & MSK_NEG)
 						branch(zaddr);
-					_log("\t\tBMI  +%02X\t\t(flag=%02X)", zaddr, p);
+					_log("\t\tBMI\t+%02X", zaddr);
+					break;
+				case 0x40:	// BVC
+					if (!(p & MSK_OVERFLOW))
+						branch(zaddr);
+					_log("\t\tBVC\t+%02X", zaddr);
+					break;
+				case 0x60:	// BVS
+					if (p & MSK_OVERFLOW)
+						branch(zaddr);
+					_log("\t\tBVS\t+%02X", zaddr);
 					break;
 				case 0x80:	// BCC
 					if (!(p & MSK_CARRY))
 						branch(zaddr);
-					_log("\t\tBCC  +%02X\t\t(flag=%02X)", zaddr, p);
+					_log("\t\tBCC\t+%02X", zaddr);
 					break;
 				case 0xA0:	// BCS
 					if (p & MSK_CARRY)
 						branch(zaddr);
-					_log("\t\tBCS  +%02X\t\t(flag=%02X)", zaddr, p);
+					_log("\t\tBCS\t+%02X", zaddr);
 					break;
 				case 0xC0:	// BNE
 					if (!(p & MSK_ZERO))
 						branch(zaddr);
-					_log("\t\tBNE  +%02X", zaddr);
+					_log("\t\tBNE\t+%02X", zaddr);
 					break;
 				case 0xE0:	// BEQ
 					if (p & MSK_ZERO)
 						branch(zaddr);
-					_log("\t\tBEQ  +%02X", zaddr);
+					_log("\t\tBEQ\t+%02X", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x14:	// d,x
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
+			addr = zaddr + x;
 			switch (instr & 0xE0) {
+				case 0x80:	// STY d,x
+					storeData(addr, y);
+					_log("\t\tSTY  [%02X+x]", zaddr);
+					break;
 				case 0xA0:	// LDY d,x
-					adjustZN(y = loadData(zaddr + x));
-					_log("\t\tLDY  [%02X+x]\t\t(Y=%02X, X=%02X)", zaddr, y, x);
+					adjustZN(y = loadData(addr));
+					_log("\t\tLDY  [%02X+x]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x18:
 			switch (instr & 0xE0) {
 				case 0x00:	// CLC
 					p &= ~MSK_CARRY;
-					_log("\t\t\tCLC\t\t\t(flag=%02X)", p);
+					_log("\t\t\tCLC");
 					break;
 				case 0x20:	// SEC
 					p |= MSK_CARRY;
-					_log("\t\t\tSEC\t\t\t(flag=%02X)", p);
+					_log("\t\t\tSEC");
 					break;
 				case 0x40:	// CLI
 					p &= ~MSK_INT;
-					_log("\t\t\tCLI\t\t\t(flag=%02X)", p);
+					_log("\t\t\tCLI");
 					break;
 				case 0x60:	// SEI
 					p |= MSK_INT;
-					_log("\t\t\tSEI\t\t\t(flag=%02X)", p);
+					_log("\t\t\tSEI");
 					break;
 				case 0x80:	// TYA
 					adjustZN(a = y);
-					_log("\t\t\tTYA\t\t\t(A=%02X)", a);
+					_log("\t\t\tTYA");
+					break;
+				case 0xA0:	// CLV
+					p &= ~MSK_OVERFLOW;
+					_log("\t\t\tCLV");
 					break;
 				case 0xC0:	// CLD
 					p &= ~MSK_DEC;
-					_log("\t\t\tCLD\t\t\t(flag=%02X)", p);
+					_log("\t\t\tCLD");
+					break;
+				case 0xE0:	// SED
+					p |= MSK_DEC;
+					_log("\t\t\tSED");
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x1C:	// a,x
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
 				case 0xA0:	// LDY a,x
 					adjustZN(y = loadData(addr + x));
-					_log("\t\tLDY  [%04X+x]\t\t(Y=%02X, X=%02X)", addr, y, x);
+					_log("\t\tLDY\t[%04X+x]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		default:
-					bcnt = 0;
+			invalid_op = true;
 	}
 }
 
 void NESCT01Module::action_alu(u8 instr) {
-	u8 v = 0;	// instant value
-	u8 zaddr = 0;	// zero page addr
-	u8 addrl = 0, addrh = 0;
-	u16 addr;	// absolute addr
+	u8 v = 0;
+	u8 zaddr = 0, addrl = 0, addrh = 0;
+	u16 addr;
 	switch (instr & 0x1C) {
-		case 0x04:	// z
+		case 0x00:	// (d,x)
+			zaddr = loadData(pc++);
+			_log(" %02X", zaddr);
+			addrl = loadData(zaddr + x); addrh = loadData(zaddr + x + 1);
+			addr = addrl + (addrh << 8);
+			switch (instr & 0xE0) {
+				case 0x00:	// ORA (d,x)
+					adjustZN(a |= loadData(addr));
+					_log("\t\tORA\t[[%02X+x]]", zaddr);
+					break;
+				case 0x20:	// AND (d,x)
+					adjustZN(a &= loadData(addr));
+					_log("\t\tAND\t[[%02X+x]]", zaddr);
+					break;
+				case 0x40:	// EOR (d,x)
+					adjustZN(a ^= loadData(addr));
+					_log("\t\tEOR\t[[%02X+x]]", zaddr);
+					break;
+				case 0x60:	// ADC (d,x)
+					adjustZN(a = add(a, loadData(addr)));
+					_log("\t\tADC\t[[%02X+x]]", zaddr);
+					break;
+				case 0x80:	// STA (d,x)
+					storeData(addr, a);
+					_log("\t\tSTA\t[[%02X+x]]", zaddr);
+					break;
+				case 0xA0:	// LDA (d,x)
+					adjustZN(a = loadData(addr));
+					_log("\t\tLDA\t[[%02X+x]]", zaddr);
+					break;
+				case 0xC0:	// CMP (d,x)
+					cmp(a, loadData(addr));
+					_log("\t\tCMP\t[[%02X+x]]", zaddr);
+					break;
+				case 0xE0:	// SBC (d,x)
+					adjustZN(a = sub(a, loadData(addr)));
+					_log("\t\tSBC\t[[%02X+x]]", zaddr);
+					break;
+				default:
+					invalid_op = true;
+			}
+			break;
+		case 0x04:	// d
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
-				case 0x00:	// ORA z
+				case 0x00:	// ORA d
 					adjustZN(a |= loadData(zaddr));
-					_log("\t\tORA  [%02X]\t\t(A=%02X)", zaddr, a);
+					_log("\t\tORA\t[%02X]", zaddr);
 					break;
-				case 0x20:	// AND z
+				case 0x20:	// AND d
 					adjustZN(a &= loadData(zaddr));
-					_log("\t\tAND  [%02X]\t\t(A=%02X)", zaddr, a);
+					_log("\t\tAND\t[%02X]", zaddr);
 					break;
-				case 0x40:	// EOR z
+				case 0x40:	// EOR d
 					adjustZN(a ^= loadData(zaddr));
-					_log("\t\tEOR  [%02X]\t\t(A=%02X)", zaddr, a);
+					_log("\t\tEOR\t[%02X]", zaddr);
 					break;
-				case 0x60:	// ADC z
-					adjustZN(a = add(a, loadData(zaddr), p & MSK_CARRY));
-					_log("\t\tADC  [%02X]\t\t(A=%02X, [%02X]=%02X)", zaddr, a, zaddr, loadData(zaddr));
+				case 0x60:	// ADC d
+					adjustZN(a = add(a, loadData(zaddr)));
+					_log("\t\tADC\t[%02X]", zaddr);
 					break;
-				case 0x80:	// STA z
+				case 0x80:	// STA d
 					storeData(zaddr, a);
-					_log("\t\tSTA  [%02X]\t\t(A=%02X)", zaddr, a);
+					_log("\t\tSTA\t[%02X]", zaddr);
 					break;
-				case 0xA0:	// LDA z
+				case 0xA0:	// LDA d
 					adjustZN(a = loadData(zaddr));
-					_log("\t\tLDA  [%02X]\t\t(A=%02X)", zaddr, a);
+					_log("\t\tLDA\t[%02X]", zaddr);
 					break;
-				case 0xC0:	// CMP z
-					sub(a, loadData(zaddr));
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+				case 0xC0:	// CMP d
+					cmp(a, loadData(zaddr));
+					_log("\t\tCMP\t[%02X]", zaddr);
 					break;
-				case 0xE0:	// SBC z
+				case 0xE0:	// SBC d
 					adjustZN(a = sub(a, loadData(zaddr)));
-					_log("\t\tSBC  [%02X]\t\t(A=%02X, [%02X]=%02X)", zaddr, a, zaddr, loadData(zaddr));
+					_log("\t\tSBC\t[%02X]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x08:	// #i
@@ -537,190 +657,251 @@ void NESCT01Module::action_alu(u8 instr) {
 			switch (instr & 0xE0) {
 				case 0x00:	// ORA #i
 					adjustZN(a |= v);
-					_log("\t\tORA  %02X\t\t\t(A=%02X)", v, a);
+					_log("\t\tORA\t%02X", v);
 					break;
 				case 0x20:	// AND #i
 					adjustZN(a &= v);
-					_log("\t\tAND  %02X\t\t\t(A=%02X)", v, a);
+					_log("\t\tAND\t%02X", v);
 					break;
 				case 0x40:	// EOR #i
 					adjustZN(a ^= v);
-					_log("\t\tEOR  %02X\t\t\t(A=%02X)", v, a);
+					_log("\t\tEOR\t%02X", v);
 					break;
 				case 0x60:	// ADC #i
-					adjustZN(a = add(a, v, p & MSK_CARRY));
-					_log("\t\tADC  %02X\t\t\t(A=%02X, flag=%02X)", v, a, p);
+					adjustZN(a = add(a, v));
+					_log("\t\tADC\t%02X", v);
 					break;
 				case 0xA0:	// LDA #i
 					adjustZN(a = v);
-					_log("\t\tLDA  %02X\t\t\t(A=%02X)", v, a);
+					_log("\t\tLDA\t%02X", v);
 					break;
 				case 0xC0:	// CMP #i
-					sub(a, v);
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  %02X\t\t\t(flag=%02X)", v, p);
+					cmp(a, v);
+					_log("\t\tCMP\t%02X", v);
 					break;
 				case 0xE0:	// SBC #i
 					adjustZN(a = sub(a, v));
-					_log("\t\tSBC  %02X\t\t\t(A=%02X)", v, a);
+					_log("\t\tSBC\t%02X", v);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x0C:	// a
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
+				case 0x00:	// ORA a
+					adjustZN(a |= loadData(addr));
+					_log("\t\tORA\t[%04X]", addr);
+					break;
+				case 0x20:	// AND a
+					adjustZN(a &= loadData(addr));
+					_log("\t\tAND\t[%04X]", addr);
+					break;
+				case 0x40:	// EOR a
+					adjustZN(a ^= loadData(addr));
+					_log("\t\tEOR\t[%04X]", addr);
+					break;
 				case 0x60:	// ADC a
-					v = loadData(addr);
-					adjustZN(a = add(a, v, p & MSK_CARRY));
-					_log("\t\tADC  [%04X]\t\t(A=%02X)", addr, a);
+					adjustZN(a = add(a, loadData(addr)));
+					_log("\t\tADC\t[%04X]", addr);
 					break;
 				case 0x80:	// STA a
 					storeData(addr, a);
-					_log("\t\tSTA  [%04X]\t\t(A=%02X)", addr, a);
+					_log("\t\tSTA\t[%04X]", addr);
 					break;
 				case 0xA0:	// LDA a
 					adjustZN(a = loadData(addr));
-					_log("\t\tLDA  [%04X]\t\t(A=%02X)", addr, a);
+					_log("\t\tLDA\t[%04X]", addr);
 					break;
 				case 0xC0:	// CMP a
-					sub(a, loadData(addr));
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  [%04X]\t\t(flag=%02X, [%04X]=%02X)", v, p, addr, loadData(addr));
+					cmp(a, loadData(addr));
+					_log("\t\tCMP\t[%04X]", addr);
+					break;
+				case 0xE0:	// SBC a
+					adjustZN(a = sub(a, loadData(addr)));
+					_log("\t\tSBC\t[%04X]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x10:	// (d),y
-			v = loadData(pc++);
-			_log(" %02X", v);
-			addrl = loadData(v);
-			addrh = loadData(v + 1);
-			addr = addrl + (addrh << 8);
+			zaddr = loadData(pc++);
+			_log(" %02X", zaddr);
+			addrl = loadData(zaddr); addrh = loadData(zaddr + 1);
+			addr = addrl + (addrh << 8) + y;
 			switch (instr & 0xE0) {
+				case 0x00:	// ORA (d),y
+					adjustZN(a |= loadData(addr));
+					_log("\t\tORA\t[[%02X]+y]", zaddr);
+					break;
+				case 0x20:	// AND (d),y
+					adjustZN(a &= loadData(addr));
+					_log("\t\tAND\t[[%02X]+y]", zaddr);
+					break;
+				case 0x40:	// EOR (d),y
+					adjustZN(a ^= loadData(addr));
+					_log("\t\tEOR\t[[%02X]+y]", zaddr);
+					break;
+				case 0x60:	// ADC (d),y
+					adjustZN(a = add(a, loadData(addr)));
+					_log("\t\tADC\t[[%02X]+y]", zaddr);
+					break;
 				case 0x80:	// STA (d),y
-					storeData(addr + y, a);
-					_log("\t\tSTA  [[%02X]+y]\t\t(A=%02X, Y=%02X, [%02X]=%04X)", v, a, y, v, addr);
+					storeData(addr, a);
+					_log("\t\tSTA\t[[%02X]+y]", zaddr);
 					break;
 				case 0xA0:	// LDA (d),y
-					adjustZN(a = loadData(addr + y));
-					_log("\t\tLDA  [[%02X]+y]\t\t(A=%02X, Y=%02X, [%02X]=%04X)", v, a, y, v, addr);
+					adjustZN(a = loadData(addr));
+					_log("\t\tLDA\t[[%02X]+y]", zaddr);
 					break;
 				case 0xC0:	// CMP (d),y
-					sub(a, loadData(addr + y));
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  [[%02X]+y]\t\t(A=%02X, Y=%02X, [%02X]=%04X, flag=%02X)", v, a, y, v, addr, p);
+					cmp(a, loadData(addr));
+					_log("\t\tCMP\t[[%02X]+y]", zaddr);
+					break;
+				case 0xE0:	// SBC (d),y
+					adjustZN(a = sub(a, loadData(addr)));
+					_log("\t\tSBC\t[[%02X]+y]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x14:	// d,x
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
+			addr = zaddr + x;
 			switch (instr & 0xE0) {
-				case 0x80:	// STA d,x
-					storeData(zaddr + x, a);
-					_log("\t\tSTA  [%02X+x]\t\t(A=%02X, X=%02X)", zaddr, a, x);
+				case 0x00:	// ORA a
+					adjustZN(a |= loadData(addr));
+					_log("\t\tORA\t[%02X+x]", zaddr);
 					break;
-				case 0xA0:	// LDA d,x
-					adjustZN(a = loadData(zaddr + x));
-					_log("\t\tLDA  [%02X+x]\t\t(A=%02X, X=%02X)", zaddr, a, x);
+				case 0x20:	// AND a
+					adjustZN(a &= loadData(addr));
+					_log("\t\tAND\t[%02X+x]", zaddr);
 					break;
-				case 0xC0:	// CMP d,x
-					sub(a, loadData(zaddr + x));
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  [%02X+x]\t\t(A=%02X, X=%02X, flag=%02X)", zaddr, a, x, p);
+				case 0x40:	// EOR a
+					adjustZN(a ^= loadData(addr));
+					_log("\t\tEOR\t[%02X+x]", zaddr);
+					break;
+				case 0x60:	// ADC a
+					adjustZN(a = add(a, loadData(addr)));
+					_log("\t\tADC\t[%02X+x]", zaddr);
+					break;
+				case 0x80:	// STA a
+					storeData(addr, a);
+					_log("\t\tSTA\t[%02X+x]", zaddr);
+					break;
+				case 0xA0:	// LDA a
+					adjustZN(a = loadData(addr));
+					_log("\t\tLDA\t[%02X+x]", zaddr);
+					break;
+				case 0xC0:	// CMP a
+					cmp(a, loadData(addr));
+					_log("\t\tCMP\t[%02X+x]", zaddr);
+					break;
+				case 0xE0:	// SBC a
+					adjustZN(a = sub(a, loadData(addr)));
+					_log("\t\tSBC\t[%02X+x]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x18:	// a,y
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
+				case 0x00:	// ORA a,y
+					adjustZN(a |= loadData(addr + y));
+					_log("\t\tORA\t[%04X+y]", addr);
+					break;
+				case 0x20:	// AND a,y
+					adjustZN(a &= loadData(addr + y));
+					_log("\t\tAND\t[%04X+y]", addr);
+					break;
+				case 0x40:	// EOR a,y
+					adjustZN(a ^= loadData(addr + y));
+					_log("\t\tEOR\t[%04X+y]", addr);
+					break;
 				case 0x60:	// ADC a,y
-					v = loadData(addr + y);
-					adjustZN(a = add(a, v, p & MSK_CARRY));
-					_log("\t\tADC  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
+					adjustZN(a = add(a, loadData(addr + y)));
+					_log("\t\tADC\t[%04X+y]", addr);
 					break;
 				case 0x80:	// STA a,y
 					storeData(addr + y, a);
-					_log("\t\tSTA  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
+					_log("\t\tSTA\t[%04X+y]", addr);
 					break;
 				case 0xA0:	// LDA a,y
 					adjustZN(a = loadData(addr + y));
-					_log("\t\tLDA  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
+					_log("\t\tLDA\t[%04X+y]", addr);
 					break;
 				case 0xC0:	// CMP a,y
-					sub(a, loadData(addr + y));
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  [%04X+y]\t\t(flag=%02X, Y=%02X, [%04X+y]=%02X)", addr, p, y, addr, loadData(addr + y));
+					cmp(a, loadData(addr + y));
+					_log("\t\tCMP\t[%04X+y]", addr);
 					break;
 				case 0xE0:	// SBC a,y
 					adjustZN(a = sub(a, loadData(addr + y)));
-					_log("\t\tSBC  [%04X+y]\t\t(A=%02X, Y=%02X)", addr, a, y);
+					_log("\t\tSBC\t[%04X+y]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x1C:	// a,x
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
 				case 0x00:	// ORA a,x
 					adjustZN(a |= loadData(addr + x));
-					_log("\t\tORA  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
+					_log("\t\tORA\t[%04X+x]", addr);
 					break;
 				case 0x20:	// AND a,x
 					adjustZN(a &= loadData(addr + x));
-					_log("\t\tAND  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
+					_log("\t\tAND\t[%04X+x]", addr);
 					break;
 				case 0x40:	// EOR a,x
 					adjustZN(a ^= loadData(addr + x));
-					_log("\t\tEOR  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
+					_log("\t\tEOR\t[%04X+x]", addr);
+					break;
+				case 0x60:	// ADC a,x
+					adjustZN(a = add(a, loadData(addr + x)));
+					_log("\t\tADC\t[%04X+x]", addr);
 					break;
 				case 0x80:	// STA a,x
 					storeData(addr + x, a);
-					_log("\t\tSTA  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
+					_log("\t\tSTA\t[%04X+x]", addr);
 					break;
 				case 0xA0:	// LDA a,x
 					adjustZN(a = loadData(addr + x));
-					_log("\t\tLDA  [%04X+x]\t\t(A=%02X, X=%02X)", addr, a, x);
+					_log("\t\tLDA\t[%04X+x]", addr);
 					break;
 				case 0xC0:	// CMP a,x
-					sub(a, loadData(addr + x));
-					p ^= MSK_CARRY;
-					_log("\t\tCMP  [%04X+x]\t\t(flag=%02X, X=%02X, [%04X+x]=%02X)", addr, p, x, addr, loadData(addr + x));
+					cmp(a, loadData(addr + x));
+					_log("\t\tCMP\t[%04X+x]", addr);
+					break;
+				case 0xE0:	// SBC a,x
+					adjustZN(a = sub(a, loadData(addr + x)));
+					_log("\t\tSBC\t[%04X+x]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		default:
-					bcnt = 0;
+			invalid_op = true;
 	}
 }
 
 void NESCT01Module::action_mv(u8 instr) {
-	u8 v = 0, v2 = 0;	// instant value
-	u8 zaddr = 0;		// zero page addr
-	u8 addrl = 0, addrh = 0;
-	u16 addr;			// absolute addr
+	u8 v = 0, v2 = 0;
+	u8 zaddr = 0, addrl = 0, addrh = 0;
+	u16 addr;
 	switch (instr & 0x1C) {
 		case 0x00:	// #i
 			v = loadData(pc++);
@@ -731,277 +912,252 @@ void NESCT01Module::action_mv(u8 instr) {
 					_log("\t\tLDX  %02X", x);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
-		case 0x04:	// z
+		case 0x04:	// d
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
 				case 0x00:	// ASL
-					v2 = loadData(zaddr);
-					adjustZN(v = (v2 << 1));
+					adjustN(v = asl(loadData(zaddr))); adjustZ(a);
 					storeData(zaddr, v);
-					if (v2 & 0x80)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tASL  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					_log("\t\tASL\t[%02X]", zaddr);
 					break;
 				case 0x20:	// ROL z
-					v2 = loadData(zaddr);
-					adjustZN(v = (v2 << 1) + (p & MSK_CARRY));
+					adjustN(v = rol(loadData(zaddr))); adjustZ(a);
 					storeData(zaddr, v);
-					if (v2 & 0x80)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tROL  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					_log("\t\tROL\t[%02X]", zaddr);
 					break;
 				case 0x40:	// LSR z
-					v = loadData(zaddr);
-					if (v & 0x1)
-						p | MSK_CARRY;
-					else
-						p & ~MSK_CARRY;
-					v >>= 1;
+					adjustZN(v = lsr(loadData(zaddr)));
 					storeData(zaddr, v);
-					_log("\t\tLSR  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, zaddr, loadData(zaddr), p);
+					_log("\t\tLSR\t[%02X]", zaddr);
 					break;
 				case 0x60:	// ROR z
-					v2 = loadData(zaddr);
-					adjustZN(v = (v2 >> 1) + (p & MSK_CARRY) * 0x80);
+					adjustN(v = ror(loadData(zaddr))); adjustZ(a);
 					storeData(zaddr, v);
-					if (v2 & 0x1)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tROR  [%02X]\t\t([%02X]=%02X, flag=%02X)", zaddr, loadData(zaddr), p);
+					_log("\t\tROR\t[%02X]", zaddr);
 					break;
 				case 0x80:	// STX z
 					storeData(zaddr, x);
-					_log("\t\tSTX  [%02X]\t\t(X=%02X)", zaddr, x);
+					_log("\t\tSTX\t[%02X]", zaddr);
 					break;
 				case 0xA0:	// LDX z
 					adjustZN(x = loadData(zaddr));
-					_log("\t\tLDX  [%02X]\t\t(X=%02X)", zaddr, x);
+					_log("\t\tLDX\t[%02X]", zaddr);
 					break;
 				case 0xC0:	// DEC z
 					v = loadData(zaddr);
 					adjustZN(--v);
 					storeData(zaddr, v);
-					_log("\t\tDEC  [%02X]\t\t([%02X]=%02X)", zaddr, zaddr, loadData(zaddr));
+					_log("\t\tDEC\t[%02X]", zaddr);
 					break;
 				case 0xE0:	// INC z
 					v = loadData(zaddr);
 					adjustZN(++v);
 					storeData(zaddr, v);
-					_log("\t\tINC  [%02X]\t\t([%02X]=%02X)", zaddr, zaddr, loadData(zaddr));
+					_log("\t\tINC\t[%02X]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x08:
 			switch (instr & 0xE0) {
 				case 0x00:	// ASL
-					v = a;
-					adjustZN(a = (v << 1));
-					if (v & 0x80)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\t\tASL\t\t\t(A=%02X, flag=%02X)", a, p);
+					adjustZN(a = asl(a));
+					_log("\t\t\tASL");
 					break;
 				case 0x20:	// ROL
-					v = a;
-					adjustZN(a = (v << 1) + (p & MSK_CARRY));
-					if (v & 0x80)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\t\tROL\t\t\t(A=%02X, flag=%02X)", a, p);
+					adjustZN(a = rol(a));
+					_log("\t\t\tROL");
 					break;
 				case 0x40:	// LSR
-					if (a & 0x1)
-						p | MSK_CARRY;
-					else
-						p & ~MSK_CARRY;
-					a >>= 1;
-					_log("\t\t\tLSR\t\t\t(A=%02X, flag=%02X)", a, p);
+					adjustZN(a = lsr(a));
+					_log("\t\t\tLSR");
 					break;
 				case 0x60:	// ROR
-					v = a;
-					adjustZN(a = (v >> 1) + (p & MSK_CARRY) * 0x80);
-					if (v & 0x1)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\t\tROR\t\t\t(A=%02X, flag=%02X)", a, p);
+					adjustZN(a = ror(a));
+					_log("\t\t\tROR");
 					break;
 				case 0x80:	// TXA
 					adjustZN(a = x);
-					_log("\t\t\tTXA\t\t\t(A=%02X)", a);
+					_log("\t\t\tTXA");
 					break;
 				case 0xA0:	// TAX
 					adjustZN(x = a);
-					_log("\t\t\tTAX\t\t\t(X=%02X)", x);
+					_log("\t\t\tTAX");
 					break;
 				case 0xC0:	// DEX
 					adjustZN(--x);
-					_log("\t\t\tDEX\t\t\t(X=%02X)", x);
+					_log("\t\t\tDEX");
 					break;
 				case 0xE0:	// NOP
 					_log("\t\t\tNOP");
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x0C:	// a
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
-				case 0x20:	// ROL a
-					v2 = loadData(addr);
-					adjustZN(v = (v2 << 1) + (p & MSK_CARRY));
+				case 0x00:	// ASL a
+					adjustN(v = asl(loadData(addr))); adjustZ(a);
 					storeData(addr, v);
-					if (v2 & 0x80)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tROL  [%04X]\t\t([%04X]=%02X, flag=%02X)", addr, addr, loadData(addr), p);
+					_log("\t\tASL\t[%04X]", addr);
+					break;
+				case 0x20:	// ROL a
+					adjustN(v = rol(loadData(addr))); adjustZ(a);
+					storeData(addr, v);
+					_log("\t\tROL\t[%04X]", addr);
 					break;
 				case 0x40:	// LSR a
-					v = loadData(addr);
-					if (v & 0x1)
-						p | MSK_CARRY;
-					else
-						p & ~MSK_CARRY;
-					v >>= 1;
+					adjustZN(v = lsr(loadData(addr)));
 					storeData(addr, v);
-					_log("\t\tLSR  [%04X]\t\t([%04X]=%02X, flag=%02X)", addr, addr, loadData(addr), p);
+					_log("\t\tLSR\t[%04X]", addr);
 					break;
 				case 0x60:	// ROR a
-					v2 = loadData(addr);
-					adjustZN(v = (v2 >> 1) + (p & MSK_CARRY) * 0x80);
+					adjustN(v = ror(loadData(addr))); adjustZ(a);
 					storeData(addr, v);
-					if (v2 & 0x1)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tROR  [%04X]\t\t([%04X]=%02X, flag=%02X)", addr, loadData(addr), p);
+					_log("\t\tROR\t[%04X]", addr);
 					break;
 				case 0x80:	// STX a
 					storeData(addr, x);
-					_log("\t\tSTX  [%04X]\t\t(X=%02X)", addr, x);
+					_log("\t\tSTX\t[%04X]", addr);
 					break;
 				case 0xA0:	// LDX a
 					adjustZN(x = loadData(addr));
-					_log("\t\tLDX  [%04X]\t\t(X=%02X)", addr, x);
+					_log("\t\tLDX\t[%04X]", addr);
 					break;
 				case 0xC0:	// DEC a
 					v = loadData(addr);
 					adjustZN(--v);
 					storeData(addr, v);
-					_log("\t\tDEC  [%04X]\t\t([%04X]=%02X)", addr, addr, v);
+					_log("\t\tDEC\t[%04X]", addr);
 					break;
 				case 0xE0:	// INC a
 					v = loadData(addr);
 					adjustZN(++v);
 					storeData(addr, v);
-					_log("\t\tINC  [%04X]\t\t([%04X]=%02X)", addr, addr, v);
+					_log("\t\tINC\t[%04X]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
-		case 0x14:	// d,x
+		case 0x14:	// d,[x|y]
 			zaddr = loadData(pc++);
 			_log(" %02X", zaddr);
 			switch (instr & 0xE0) {
+				case 0x00:	// ASL d,x
+					adjustN(v = asl(loadData(zaddr + x))); adjustZ(a);
+					storeData(zaddr + x, v);
+					_log("\t\tASL\t[%02X+x]", zaddr);
+					break;
+				case 0x20:	// ROL d,x
+					adjustN(v = rol(loadData(zaddr + x))); adjustZ(a);
+					storeData(zaddr + x, v);
+					_log("\t\tROL\t[%02X+x]", zaddr);
+					break;
+				case 0x40:	// LSR d,x
+					adjustZN(v = lsr(loadData(zaddr + x)));
+					storeData(zaddr + x, v);
+					_log("\t\tLSR\t[%02X+x]", zaddr);
+					break;
+				case 0x60:	// ROR d,x
+					adjustN(v = ror(loadData(zaddr + x))); adjustZ(a);
+					storeData(zaddr + x, v);
+					_log("\t\tROR\t[%02X+x]", zaddr);
+					break;
+				case 0x80:	// STX d,y
+					storeData(zaddr + y, x);
+					_log("\t\tSTX\t[%02X+y]", zaddr);
+					break;
+				case 0xA0:	// LDX d,y
+					adjustZN(x = loadData(zaddr + y));
+					_log("\t\tLDX\t[%02X+y]", zaddr);
+					break;
 				case 0xC0:	// DEC d,x
 					v = loadData(zaddr + x);
 					adjustZN(--v);
 					storeData(zaddr + x, v);
-					_log("\t\tDEC  [%02X+x]\t\t([%02X+x]=%02X, X=%02X)", zaddr, zaddr, v, x);
+					_log("\t\tDEC\t[%02X+x]", zaddr);
 					break;
 				case 0xE0:	// INC d,x
 					v = loadData(zaddr + x);
 					adjustZN(++v);
 					storeData(zaddr + x, v);
-					_log("\t\tINC  [%02X+x]\t\t([%02X+x]=%02X, X=%02X)", zaddr, zaddr, v, x);
+					_log("\t\tINC\t[%02X+x]", zaddr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x18:
 			switch (instr & 0xE0) {
 				case 0x80:	// TXS
 					sp = x;
-					_log("\t\t\tTXS\t\t\t(S=%02X)", sp);
+					_log("\t\t\tTXS");
 					break;
 				case 0xA0:	// TSX
 					adjustZN(x = sp);
-					_log("\t\t\tTSX\t\t\t(X=%02X)", x);
+					_log("\t\t\tTSX");
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		case 0x1C:	// a,[x|y]
-			addrl = loadData(pc++);
-			addrh = loadData(pc++);
+			addrl = loadData(pc++); addrh = loadData(pc++);
+			_log(" %02X %02X", addrl, addrh);
 			addr = addrl + (addrh << 8);
-			_log(" %02X", addrl);
-			_log(" %02X", addrh);
 			switch (instr & 0xE0) {
-				case 0x20:	// ROL a,x
-					v2 = loadData(addr + x);
-					adjustZN(v = (v2 << 1) + (p & MSK_CARRY));
+				case 0x00:	// ASL a,x
+					adjustN(v = asl(loadData(addr + x))); adjustZ(a);
 					storeData(addr + x, v);
-					if (v2 & 0x80)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tROR  [%04X+x]\t\t([%04X+x]=%02X, X=%02X, flag=%02X)", addr, addr, loadData(addr + x), x, p);
+					_log("\t\tASL\t[%04X+x]", addr);
+					break;
+				case 0x20:	// ROL a,x
+					adjustN(v = rol(loadData(addr + x))); adjustZ(a);
+					storeData(addr + x, v);
+					_log("\t\tROL\t[%04X+x]", addr);
+					break;
+				case 0x40:	// LSR a,x
+					adjustZN(v = lsr(loadData(addr + x)));
+					storeData(addr + x, v);
+					_log("\t\tLSR\t[%04X+x]", addr);
 					break;
 				case 0x60:	// ROR a,x
-					v2 = loadData(addr + x);
-					adjustZN(v = (v2 >> 1) + (p & MSK_CARRY) * 0x80);
+					adjustN(v = ror(loadData(addr + x))); adjustZ(a);
 					storeData(addr + x, v);
-					if (v2 & 0x1)
-						p |= MSK_CARRY;
-					else
-						p &= ~MSK_CARRY;
-					_log("\t\tROR  [%04X+x]\t\t([%04X+x]=%02X, X=%02X, flag=%02X)", addr, addr, loadData(addr + x), x, p);
+					_log("\t\tROR\t[%04X+x]", addr);
 					break;
 				case 0xA0:	// LDX a,y
 					adjustZN(x = loadData(addr + y));
-					_log("\t\tLDX  [%04X+y]\t\t(X=%02X, Y=%02X)", addr, x, y);
+					_log("\t\tLDX\t[%04X+y]", addr);
 					break;
 				case 0xC0:	// DEC a,x
 					v = loadData(addr + x);
 					adjustZN(--v);
 					storeData(addr + x, v);
-					_log("\t\tINC  [%04X+x]\t\t([%04X+x]=%02X)", addr, addr, v);
+					_log("\t\tDEC\t[%04X+x]", addr);
 					break;
 				case 0xE0:	// INC a,x
 					v = loadData(addr + x);
 					adjustZN(++v);
 					storeData(addr + x, v);
-					_log("\t\tINC  [%04X+x]\t\t([%04X+x]=%02X)", addr, addr, v);
+					_log("\t\tINC\t[%04X+x]", addr);
 					break;
 				default:
-					bcnt = 0;
+					invalid_op = true;
 			}
 			break;
 		default:
-					bcnt = 0;
+			invalid_op = true;
 	}
 }
 

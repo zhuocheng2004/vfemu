@@ -4,7 +4,7 @@ project(vfemu)
 
 include_directories(${CMAKE_SOURCE_DIR}/include/)
 
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wimplicit-fallthrough")
 
 find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2)
 message("SDL2 Info: ")

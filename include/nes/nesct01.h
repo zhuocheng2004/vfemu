@@ -47,8 +47,8 @@ private:
 	/** is CPU running? */
 	bool		running = false;
 	
-	/** level of NMI interrupt handling */
-	int			in_nmi = 0;
+	/** level of IRQ interrupt handling */
+	int			in_irq = 0;
 
 	/** action lock */
 	std::mutex	lock;
@@ -94,9 +94,24 @@ private:
 		return v;
 	}
 
-	u8 adjustZN(u8 v);
-	u8 add(u8 a1, u8 a2, u8 carry);
-	u8 sub(u8 a1, u8 a2);
+	u8 adjustZ(u8 v);
+	u8 adjustN(u8 v);
+
+	inline u8 adjustZN(u8 v) {
+		adjustZ(v);
+		adjustN(v);
+		return v;
+	}
+
+	u8 add(u8 v1, u8 v2);
+	u8 sub(u8 v1, u8 v2);
+	void bit(u8 v);
+	void cmp(u8 v1, u8 v2);
+	u8 asl(u8 v);
+	u8 lsr(u8 v);
+	u8 rol(u8 v);
+	u8 ror(u8 v);
+	
 
 	u16 branch(u8 offset);
 
