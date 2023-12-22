@@ -1,7 +1,6 @@
 
 #include <iostream>
 #include <thread>
-#include <SDL2/SDL.h>
 #include <nes/nesppu.h>
 
 
@@ -12,12 +11,13 @@ namespace nes {
 using namespace std::chrono_literals;
 
 
-#define ROWS	30
-#define COLUMNS	32
+#define ROWS		30
+#define COLUMNS		32
+#define PITCH		COLUMNS * 8
 
 
 Status NESPPUModule::init() {
-	vram = new u8[0x800];
+	vram = new u8[0x1000];
 
 	render_thread = new std::thread(render_thread_func, this);
 	return Status::SUCCESS;
@@ -25,9 +25,23 @@ Status NESPPUModule::init() {
 
 Status NESPPUModule::exit() {
 	running = false;
+	sendToPort(IDX_EXIT, 1);
 
 	delete vram;
 	return Status::SUCCESS;
+}
+
+
+u8 NESPPUModule::readVRAM(u16 addr) {
+	return vram[addr & 0xFFF];
+}
+
+void NESPPUModule::writeVRAM(u16 addr, u8 data) {
+	addr &= 0x0FFF;
+	if (vertical_mirroring)
+		vram[addr] = vram[addr ^ 0x0800] = data;
+	else
+		vram[addr] = vram[addr ^ 0x0400] = data;
 }
 
 
@@ -42,10 +56,17 @@ Status NESPPUModule::reset_receive(Module* receiver, u64 signal) {
 	module->vblank = true;
 	module->nmi = false;
 
+	module->v = 0;
+	module->t = 0;
+	module->x = 0;
 	module->w = 0;
 
-	module->baseNameTable = 0x2000;
 	module->bgPTable = 0x0000;
+
+	module->greyscale = false;
+	module->showBG = module->showSP = true;
+
+	module->scrollX = module->scrollY = 0;
 
 	module->running = true;
 	return Status::SUCCESS;
@@ -67,13 +88,13 @@ Status NESPPUModule::rw_receive(Module* receiver, u64 signal) {
 				module->sendToPort(IDX_DATA, data);
 				break;
 			case 0x7:	// PPUDATA
-				paddr = module->paddr;
+				paddr = module->v;
 				//printf("  { PPU: want to read data @%04X }  ", paddr);
 				if ((paddr & 0xE000) == 0) {
 					// CHR ROM
 					data = module->getChrData(paddr);
 					module->sendToPort(IDX_DATA, data);
-					module->paddr += 1;
+					module->v += 1;
 				}
 				break;
 		}
@@ -81,46 +102,55 @@ Status NESPPUModule::rw_receive(Module* receiver, u64 signal) {
 		data = module->data;
 		switch (module->addr & 0xF) {
 			case 0x0:	// PPUCTRL
-				switch (data & 0x3) {
-					// choose base nametable addr
-					case 0x0:
-						module->baseNameTable = 0x2000;
-						break;
-					case 0x1:
-						module->baseNameTable = 0x2400;
-						break;
-					case 0x2:
-						module->baseNameTable = 0x2800;
-						break;
-					case 0x3:
-						module->baseNameTable = 0x2C00;
-						break;
-				}
-				module->spPTable = (data & MCTRL_S) ? 0x1000 : 0x0000;
-				module->bgPTable = (data & MCTRL_B) ? 0x1000 : 0x0000;
+				// choose nametable base addr
+				module->t &= 0xf3ff;
+				module->t |= (data & 0x3) << 10;
+
+				// chose sprite pattern table base addr
+				module->spPTable = (data & MCTRL_S) << 9;
+
+				// chose background pattern table base addr
+				module->bgPTable = (data & MCTRL_B) << 8;
+
+				// generate NMI ?
 				module->nmi = (data & MCTRL_V) ? true : false;
 				break;
-			case 0x6:	// PPUADDR
-				paddr = module->paddr;
-				if (module->w & 0x1 /* 2nd: low */) {
-					paddr &= 0xFF00;
-					paddr |= data;
-					module->paddr = paddr;
-				} else { /* 1st: high */
-					paddr &= 0x00FF;
-					paddr |= ((u16) data << 8);
-					module->paddr = paddr;
+			case 0x1:	// PPUMASK
+				module->greyscale = (data & MMSK_G) ? true : false;
+				module->showBG = (data & MMSK_B) ? true : false;
+				module->showSP = (data & MMSK_S) ? true : false;
+				break;
+			case 0x5:	// PPUSCROLL
+				if (module->w & 0x1) { /* 2nd: Y scroll */
+					module->t &= ~0x73E0;
+					module->t |= (data & 0x7) << 12;
+					module->t |= (data & 0xF8) << 2;
+					//printf("PPU scroll:  t=%04X \n", module->t);
+				} else { /* 1st: X scroll */
+					module->t &= ~0x1F;
+					module->t |= (data & 0xF8) >> 3;
+					module->x = data & 0x7;
 				}
-				//printf("  { PPU set addr to %04X }  ", paddr);
-				module->w++;
+				module->w ^= 0x1;
+				break;
+			case 0x6:	// PPUADDR
+				if (module->w & 0x1 /* 2nd: low */) {
+					module->t &= ~0x00FF;
+					module->t |= data & 0x00FF;
+					module->v = module->t;
+					//printf("PPU addr:  v=%04X \n", module->v);
+				} else { /* 1st: high */
+					module->t &= ~0x7F00;
+					module->t |= (data & 0x3F) << 8;
+				}
+				module->w ^= 0x1;
 				break;
 			case 0x7:	// PPUDATA
-				paddr = module->paddr;
+				paddr = module->v & 0x3FFF;
 				if ((paddr & 0xF000) == 0x2000 || 
 					((paddr & 0xF000) == 0x3000 && (paddr < 0x3F00))) {
 					// nametable
-					paddr &= 0x7FF;
-					module->vram[paddr] = data;
+					module->writeVRAM(paddr, data);
 				}
 
 				u8 paletteIdx = 0, fineIdx;
@@ -143,8 +173,7 @@ Status NESPPUModule::rw_receive(Module* receiver, u64 signal) {
 						module->bgPalettes[paletteIdx][fineIdx] = data;
 					}
 				}
-
-				module->paddr += 1;
+				module->v += 1;
 				break;
 		}
 	}
@@ -170,103 +199,6 @@ Status NESPPUModule::pdata_receive(Module* receiver, u64 data) {
 }
 
 
-void NESPPUModule::render_thread_func(NESPPUModule* module) {
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
-		return;
-
-	SDL_Window* 	window;
-	SDL_Renderer*	renderer;
-	SDL_Texture*	texture;
-	u32 width, height;
-
-	window = SDL_CreateWindow("NES Toy Simulator",
-		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-		(COLUMNS * 8) * 2, (ROWS * 8) * 2, 
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-	if (!window)
-		return;
-
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-	if (!renderer)
-		return;
-
-	texture = SDL_CreateTexture(renderer, 
-		SDL_PIXELFORMAT_RGBA8888,
-		SDL_TEXTUREACCESS_STREAMING,
-		COLUMNS * 8,  ROWS * 8);
-	if (!texture)
-		return;
-
-	bool quit = false;
-	u32* pixels = new u32[(COLUMNS * 8) * (ROWS * 8)];
-	SDL_Event event;
-	const unsigned int delta = 1000 / 60;
-	Uint32 timer = SDL_GetTicks(), passed = 0;
-
-	std::this_thread::sleep_for(200ms);	// delibrate delay
-
-	while (!quit) {
-		// limit FPS
-		passed = SDL_GetTicks() - timer;
-		while (passed < delta) {
-			SDL_Delay(delta - passed);
-			passed = SDL_GetTicks() - timer;
-		}
-		timer = SDL_GetTicks();
-	
-		SDL_PollEvent(&event);
-
-		if (event.type == SDL_QUIT) {
-			quit = true;
-			break;
-		}
-		switch (event.type) {
-			case SDL_QUIT:
-				quit = true;
-				break;
-			case SDL_WINDOWEVENT:
-				switch (event.window.event) {
-					case SDL_WINDOWEVENT_RESIZED:
-						width = event.window.data1;
-						height = event.window.data2;
-						break;
-				}
-				break;
-		}
-
-		if (module->running) {
-			SDL_SetRenderTarget(renderer, texture);
-			SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0x00);
-			SDL_RenderClear(renderer);
-
-			/*  ==== Main Part ====  */
-			module->vblank = false;
-			fillPixels(module, pixels);
-			module->vblank = true;
-			module->sendToPort(IDX_INT, 0x1);	// tell CPU
-			SDL_UpdateTexture(texture, NULL, pixels, (COLUMNS * 8) * 4);
-			/*  ========  */
-
-			SDL_SetRenderTarget(renderer, NULL);
-			SDL_RenderCopy(renderer, texture, NULL, NULL);
-			SDL_RenderFlush(renderer);
-
-			SDL_RenderPresent(renderer);
-			SDL_UpdateWindowSurface(window);
-		}
-	}
-
-
-	SDL_DestroyTexture(texture);
-	SDL_DestroyRenderer(renderer);
-	SDL_DestroyWindow(window);
-
-	SDL_Quit();
-
-	delete pixels;
-}
-
-
 static const u32 paletteRGBs[] = {
 	// RGBA
 	0x6D6D6DFF, 0x002491FF, 0x0000DAFF, 0x6D48DAFF,
@@ -279,9 +211,9 @@ static const u32 paletteRGBs[] = {
 	0x916D00FF, 0x249100FF, 0x009100FF, 0x00B66DFF,
 	0x009191FF, 0x000000FF, 0x000000FF, 0x000000FF,
 
-	0xFFFFFFFF, 0x6DB6FFFF, 0x9191FFFF, 0xB66DFFFF,
-	0xFF00FFFF, 0xFF6D91FF, 0xFF9100FF, 0xFFB600FF,
-	0xB6B600FF, 0x6DB600FF, 0x00FF00FF, 0x48FFDAFF,
+	0xFFFFFFFF, 0x6DB6FFFF, 0x9191FFFF, 0xDA6DFFFF,
+	0xFF00FFFF, 0xFF6DFFFF, 0xFF9100FF, 0xFFB600FF,
+	0xDADA00FF, 0x6DDA00FF, 0x00FF00FF, 0x48FFDAFF,
 	0x00FFFFFF, 0x000000FF, 0x000000FF, 0x000000FF,
 
 	0xFFFFFFFF, 0xB6DAFFFF, 0xDAB6FFFF, 0xFFB6FFFF,
@@ -292,56 +224,90 @@ static const u32 paletteRGBs[] = {
 
 
 void NESPPUModule::fillPixels(NESPPUModule* module, u32* pixels) {
-	u16 ntBase = module->baseNameTable & 0x7FF;
-	u16 bgPTable = module->bgPTable;
-	u8*	vram = module->vram;
 	static u8* bgChrCache = new u8[0x1000];
 
 	// refresh CHR ROM Cache
 	// in the future, we should save each of them as texture
+	// and use shade program to render them with palette
 	for (int i = 0; i < ((16*16)<<4); i += (1<<4)) {
 		for (int l = 0; l < 8; l++) {
-			bgChrCache[i + (0 << 3) + l] = module->getChrData(bgPTable + i + (0 << 3) + l);
-			bgChrCache[i + (1 << 3) + l] = module->getChrData(bgPTable + i + (1 << 3) + l);
+			bgChrCache[i + (0 << 3) + l] = module->getChrData(module->bgPTable + i + (0 << 3) + l);
+			bgChrCache[i + (1 << 3) + l] = module->getChrData(module->bgPTable + i + (1 << 3) + l);
 		}
 	}
 
 	// build palette
 	static u32 bgPalettes[4][4];
 	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 4; j++) 
-			bgPalettes[i][j] = paletteRGBs[module->bgPalettes[i][j]];
+		for (int j = 0; j < 4; j++) {
+			if (module->greyscale)
+				bgPalettes[i][j] = paletteRGBs[module->bgPalettes[i][j] & 0x30];
+			else
+				bgPalettes[i][j] = paletteRGBs[module->bgPalettes[i][j]];
+		}
 	}
 
-	for (int row = 0; row < ROWS; row++) {
-		for (int col = 0; col < COLUMNS; col++) {
-			u8 tileIdx = vram[ntBase + row * COLUMNS + col];
-			u8 addrData = vram[ntBase + 0x03C0 + (row >> 2) * (COLUMNS / 4) + (col >> 2)];
-			u8 addrIdx;
-			if (row & 0x1) {
-				if (col & 0x1)
-					addrIdx = (addrData >> 6) & 0x3;
+	u16 v = module->t;	// coarse X/Y and fine Y
+	u8 x = module->x & 0x7;	// fine X
+
+	for (int i = 0; i < ROWS * 8; i++) {
+		u8 fineY = (v >> 12) & 0x7;
+		for (int j = 0; j < COLUMNS * 8; j++) {
+			u16 tileAddr = 0x2000 | (v & 0x0FFF);
+			u16 attrAddr = 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
+			u8 tileIdx = module->readVRAM(tileAddr);
+			u8 attrData = module->readVRAM(attrAddr);
+			u8 attrIdx;
+			u8 col = v & 0x1F;
+			u8 row = (v & 0x03E0) >> 5;
+			if (row & 0x2) {
+				if (col & 0x2)
+					attrIdx = (attrData >> 6) & 0x3;
 				else
-					addrIdx = (addrData >> 4) & 0x3;
+					attrIdx = (attrData >> 4) & 0x3;
 			} else {
-				if (col & 0x1)
-					addrIdx = (addrData >> 2) & 0x3;
+				if (col & 0x2)
+					attrIdx = (attrData >> 2) & 0x3;
 				else
-					addrIdx = (addrData >> 0) & 0x3;
+					attrIdx = (attrData >> 0) & 0x3;
 			}
-			for (int l = 0; l < 8; l++) {
-				u8 data1 = bgChrCache[(tileIdx << 4) + (0 << 3) + l];
-				u8 data2 = bgChrCache[(tileIdx << 4) + (1 << 3) + l];
-				u8 plIdx = 0;
-				int idx = (8 * row + l) * (COLUMNS * 8) + (8 * col);
-				for (int c = 7; c >= 0; c--) {
-					plIdx = (data2 >> c) & 0x1;
-					plIdx <<= 1;
-					plIdx |= (data1 >> c) & 0x1;
-					pixels[idx] = bgPalettes[addrIdx][plIdx];
-					idx++;
+			
+			u8 data1 = bgChrCache[(tileIdx << 4) + (0 << 3) + fineY];
+			u8 data2 = bgChrCache[(tileIdx << 4) + (1 << 3) + fineY];
+			u8 plIdx = (((data2 >> (7-x)) & 0x1) << 1) + ((data1 >> (7-x)) & 0x1);
+			if (module->showBG)
+				pixels[i * PITCH + j] = bgPalettes[attrIdx][plIdx];
+
+			// X increment
+			if (x != 0x7) {		// fine X != 7
+				x++;
+			} else {			// Coarse X increment
+				x = 0;
+				if ((v & 0x001F) == 31) {
+					v &= ~0x001F;
+					v ^= 0x0400;	// switch horizontal nametable
+				} else {
+					v++;
 				}
 			}
+		}
+		v ^= 0x0400;	// switch horizontal nametable
+
+		// Y increment
+		if ((v & 0x7000) != 0x7000) {	// fine Y != 7
+			v += 0x1000;
+		} else {
+			v &= ~0x7000;
+			int y = (v & 0x03E0) >> 5;
+			if (y == 29) {
+				y = 0;
+				v ^= 0x0800;		// switch vertical nametable
+			} else if (y == 31) {
+				y = 0;
+			} else {
+				y++;
+			}
+			v = (v & ~0x03E0) | (y << 5);
 		}
 	}
 }

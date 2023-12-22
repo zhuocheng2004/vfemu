@@ -12,10 +12,11 @@ using namespace node;
 using namespace toyram;
 
 
-TNES01Module::TNES01Module() {
+TNES01Module::TNES01Module(bool vertical_mirroring)
+	 : vertical_mirroring(vertical_mirroring), exit_port("pin1", exit_receive) {
 	controller = new NESCM01Module();
 	cpu = new NESCT01Module();
-	ppu = new NESPPUModule();
+	ppu = new NESPPUModule(vertical_mirroring);
 	ram = new ToyRAM8x16Module(0x800);
 	clock = new PulseGenModule(0us);
 	node_addr = new Node4u16Module();
@@ -24,8 +25,11 @@ TNES01Module::TNES01Module() {
 	node_reset = new Node3u1Module();
 
 	ports.push_back(std::make_pair("rst", node_reset->getPort("p0")));
+	ports.push_back(std::make_pair("exit", new Port("pin1")));
 	ports.push_back(std::make_pair("cart", controller->getPort("cart")));
 }
+
+const int IDX_EXIT = 1;
 
 
 Status TNES01Module::init() {
@@ -66,6 +70,8 @@ Status TNES01Module::init() {
 		{ &pin2pin, controller, "paddr", ppu, "paddr" },
 		{ &pin2pin, controller, "pdata", ppu, "pdata" },
 	});
+	exit_port.module = this;
+	pin2pin.connect(&this->exit_port, ppu->getPort("exit"));
 
 	clock->enable();
 
@@ -77,6 +83,15 @@ Status TNES01Module::exit() {
 		controller, cpu, ppu, ram, 
 		node_addr, node_data, node_clock, node_reset,
 	});
+	return Status::SUCCESS;
+}
+
+Status TNES01Module::exit_receive(Module* receiver, u64 signal) {
+	auto module = (TNES01Module*) receiver;
+	if (signal & 0x1) {
+		module->clock->disable();
+		module->sendToPort(IDX_EXIT, 1);
+	}
 	return Status::SUCCESS;
 }
 

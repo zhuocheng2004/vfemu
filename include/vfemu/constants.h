@@ -9,7 +9,7 @@
 namespace vfemu {
 
 
-const u32 VERSION = AS_VFEMU_VERSION(0x00, 0x00, 0x02);
+const u32 VERSION = AS_VFEMU_VERSION(0x00, 0x00, 0x03);
 
 
 }

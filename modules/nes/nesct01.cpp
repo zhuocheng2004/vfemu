@@ -51,14 +51,20 @@ Status NESCT01Module::reset_receive(Module* receiver, u64 signal) {
 
 Status NESCT01Module::nmi_receive(Module* receiver, u64 signal) {
 	auto module = (NESCT01Module*) receiver;
+	static int nmi_miss_count = 0;
 	if (signal) {
 		//module->lock.lock();
 		//module->branch_irq(0xFFFA);
 		//module->lock.unlock();
 		if (module->in_irq < 1 && module->lock.try_lock()) {
+			nmi_miss_count = 0;
 			t1 = std::chrono::steady_clock::now();
 			module->branch_irq(0xFFFA);
 			module->lock.unlock();
+		} else {
+			nmi_miss_count++;
+			if (nmi_miss_count > 20)
+				std::cout << "NMI missed many times!" << std::endl;
 		}
 	}
 	return Status::SUCCESS;
@@ -270,7 +276,7 @@ void NESCT01Module::branch_irq(u16 vector_addr) {
 	u8 addrh = loadData(vector_addr + 1);
 	u16 addr = addrl + (addrh << 8);
 	pc = addr;
-	printf("  ==== INT @[%04X]=%04X ====  \n", vector_addr, addr);
+	//printf("  ==== INT @[%04X]=%04X ====  \n", vector_addr, addr);
 	
 	// only break the first time
 	if (start_break) {
@@ -310,7 +316,7 @@ void NESCT01Module::action_control(u8 instr) {
 					if (in_irq > 0)
 						in_irq--;
 					_log("\t\t\tRTI");
-					std::cout << "IRQ HANDLE TIME: " << (std::chrono::steady_clock::now() - t1).count() << std::endl;
+					//std::cout << "IRQ HANDLE TIME: " << (std::chrono::steady_clock::now() - t1).count() << std::endl;
 					break;
 				case 0x60:	// RTS
 					addrl = popStack(); addrh = popStack();

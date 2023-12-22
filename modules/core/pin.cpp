@@ -29,7 +29,7 @@ Pin2pinConnector::Pin2pinConnector(Port* dest) : Connector(dest) {
 }
 
  Status Pin2pinConnector::send(u64 data) {
-	if (dest && dest->receive && dest->module) {
+	if (dest && dest->receive/* && dest->module*/) {
 		dest->receive(dest->module, data & mask);
 	}
 	return Status::SUCCESS;

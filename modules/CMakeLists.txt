@@ -1,3 +1,6 @@
 
-add_subdirectory(core/)
-add_subdirectory(nes/)
+add_subdirectory (core/)
+
+if (${BUILD_TNES})
+	add_subdirectory (nes/)
+endif ()

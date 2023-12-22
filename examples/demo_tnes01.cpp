@@ -12,6 +12,14 @@
 using namespace std::chrono_literals;
 using namespace vfemu;
 
+static bool shutdown = false;
+static Status exit_receive(Module* receiver, u64 signal) {
+	if (signal & 0x1) {
+		shutdown = true;
+	}
+	return Status::SUCCESS;
+}
+
 int main(int argc, char* argv[]) {
 	if (argc < 2) {
 		std::cerr << "Usage: " << argv[0] << " NESFilePath" << std::endl;
@@ -35,7 +43,7 @@ int main(int argc, char* argv[]) {
 	std::cout << "RPG ROM Size (in 16KB units): " << (int) iNESInfo.rpgSize << std::endl;
 	std::cout << "CHR ROM Size (in  8KB units): " << (int) iNESInfo.chrSize << std::endl;
 	printf("Flag: %08X\n", iNESInfo.flag);
-	std::cout << "  Orientation: " 
+	std::cout << "  Mirror Orientation: " 
 		  << ((iNESInfo.flag & nes::INES_HV) ? "Vertical (horizontal arrangement)" : "Horizontal (vertical arrangement)") 
 		  << std::endl;
 	std::cout << "  Has battery-backed RPG ROM: " 
@@ -54,8 +62,10 @@ int main(int argc, char* argv[]) {
 	auto nesConn = nes::NesConn();
 
 	auto reset_ctrl = new gen::Gen1Module();	// signal to reset and start machine
-	auto board = new nes::TNES01Module();		// main board
+	auto board = new nes::TNES01Module((iNESInfo.flag & nes::INES_HV) ? true : false);		// main board
 	auto cartridge = new nes::CartMapper0Module(iNESInfo);	// cartridge
+
+	auto exit_port = Port("pin1", exit_receive);
 
 	initModules({
 		reset_ctrl, board, cartridge,
@@ -72,13 +82,20 @@ int main(int argc, char* argv[]) {
 		{ &pin2pin, reset_ctrl, "out", board, "rst" },
 		{ &nesConn, cartridge, "cart", board, "cart" },
 	});
+	pin2pin.connect(&exit_port, board->getPort("exit"));
 
 	// reset board
 	reset_ctrl->send(1);
 
 	do {
-		std::this_thread::sleep_for(1000ms);
-	} while (1);
+		std::this_thread::sleep_for(100ms);
+	} while (!shutdown);
+
+	exitModules({
+		reset_ctrl, board, cartridge,
+	});
+
+	std::cout << "Stopping TNES Simulator." << std::endl;
 
 	return 0;
 }

@@ -13,6 +13,7 @@
  * 	pwr:		pin1	# PPU write
  * 	paddr:		pin16	# PPU address
  * 	pdata:		pin8	# PPU data
+ *  exit:		pin1	# output 1 when exited
  */
 
 #ifndef VFEMU_NES_NESPPU_H
@@ -30,7 +31,7 @@ namespace nes {
 
 class NESPPUModule : public Module {
 public:
-	inline NESPPUModule() : Module({
+	inline NESPPUModule(bool vertical_mirroring = true) : Module({
 		std::make_pair("clk", new Port("pin1", clock_receive)),
 		std::make_pair("rst", new Port("pin1", reset_receive)),
 		std::make_pair("rw", new Port("pin1", rw_receive)),
@@ -41,7 +42,8 @@ public:
 		std::make_pair("pwr", new Port("pin1")),
 		std::make_pair("paddr", new Port("pin16")),
 		std::make_pair("pdata", new Port("pin8", pdata_receive)),
-	}) { }
+		std::make_pair("exit", new Port("pin1")),
+	}), vertical_mirroring(vertical_mirroring) { }
 
 	Status init();
 	Status exit();
@@ -49,18 +51,19 @@ public:
 	static const int IDX_CLK = 0, IDX_RST = 1, IDX_RW = 2, IDX_INT = 3;
 	static const int IDX_ADDR = 4, IDX_DATA = 5;
 	static const int IDX_PRD = 6, IDX_PWR = 7, IDX_PADDR = 8, IDX_PDATA = 9;
+	static const int IDX_EXIT = 10;
 
 	static const int MCTRL_I = 0x04, MCTRL_S = 0x08, MCTRL_B = 0x10, MCTRL_H = 0x20, MCTRL_P = 0x40, MCTRL_V = 0x80;
+	static const int MMSK_G = 0x01, MMSK_B = 0x08, MMSK_S = 0x10;
 	static const int MSTATUS_V = 0x80;
 
 private:
+	bool		vertical_mirroring = true;
 	bool		running = false;
 
 	u16		addr = 0;	// addr from CPU
 	u8		data = 0;	// data from CPU
 	u8		pdata = 0;	// data from cartridge
-
-	u16		paddr = 0;	// local addr CPU wants to write to
 
 	u8*		vram = nullptr;
 
@@ -72,21 +75,22 @@ private:
 	bool		nmi = false;
 	//bool		inc = true;
 
-	/** scroll position / current VRAM address */
-	u8		v = 0;
-	/** coarse-x scroll and starting y scroll */
-	u8		t = 0;
-	/** fine-x of scroll */
+	bool		greyscale = false;
+	bool		showBG = true, showSP = true;
+
+	/** internal registers */
+	u16		v = 0;
+	u16		t = 0;
 	u8		x = 0;
-	/** toggles on each write to PPUSCROLL or PPUADDR. clears on reads of PPUSTATUS */
+	/** 1st/2nd write toggle */
 	u8		w = 0;
 
-	/** Base nametable address */
-	u16		baseNameTable = 0x2000;
 	/** sprite pattern table address */
 	u16		spPTable = 0x0000;
 	/** background pattern table address */
 	u16		bgPTable = 0x0000;
+
+	u8		scrollX = 0, scrollY = 0;
 
 
 	static Status clock_receive(Module*, u64);
@@ -101,6 +105,9 @@ private:
 		sendToPort(IDX_PRD, 1);
 		return pdata;
 	}
+
+	u8 readVRAM(u16 addr);
+	void writeVRAM(u16 addr, u8 data);
 
 	static void fillPixels(NESPPUModule*, u32*);
 	static void render_thread_func(NESPPUModule*);
