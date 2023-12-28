@@ -55,7 +55,7 @@ public:
 
 	static const int MCTRL_I = 0x04, MCTRL_S = 0x08, MCTRL_B = 0x10, MCTRL_H = 0x20, MCTRL_P = 0x40, MCTRL_V = 0x80;
 	static const int MMSK_G = 0x01, MMSK_B = 0x08, MMSK_S = 0x10;
-	static const int MSTATUS_V = 0x80;
+	static const int MSTATUS_S = 0x40, MSTATUS_V = 0x80;
 
 private:
 	bool		vertical_mirroring = true;
@@ -66,6 +66,7 @@ private:
 	u8		pdata = 0;	// data from cartridge
 
 	u8*		vram = nullptr;
+	u8*		oam = nullptr;
 
 	u8		universalBGColor;
 	u8		bgPalettes[4][4];
@@ -73,7 +74,9 @@ private:
 
 	bool		vblank = true;
 	bool		nmi = false;
-	//bool		inc = true;
+	bool		inc32 = false;
+	bool		sprite_large = false;
+	bool		sprite0_hit = false;
 
 	bool		greyscale = false;
 	bool		showBG = true, showSP = true;
@@ -85,12 +88,12 @@ private:
 	/** 1st/2nd write toggle */
 	u8		w = 0;
 
+	u8		oamAddr = 0;
+
 	/** sprite pattern table address */
 	u16		spPTable = 0x0000;
 	/** background pattern table address */
 	u16		bgPTable = 0x0000;
-
-	u8		scrollX = 0, scrollY = 0;
 
 
 	static Status clock_receive(Module*, u64);

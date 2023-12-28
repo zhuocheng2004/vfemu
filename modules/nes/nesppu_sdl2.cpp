@@ -40,8 +40,8 @@ void NESPPUModule::render_thread_func(NESPPUModule* module) {
 	SDL_Rect		dstRect;
 	u32 width, height;
 
-	static const int INIT_WIDTH = (COLUMNS * 8) * 2;
-	static const int INIT_HEIGHT = (ROWS * 8) * 2;
+	static const int INIT_WIDTH = (COLUMNS * 8) * 3;
+	static const int INIT_HEIGHT = (ROWS * 8) * 3;
 
 	window = SDL_CreateWindow("NES Toy Simulator",
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,

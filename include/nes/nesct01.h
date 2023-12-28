@@ -71,17 +71,9 @@ private:
 	static Status nmi_receive(Module*, u64);
 	static Status data_receive(Module*, u64);
 
-	inline u8 loadData(u16 addr) {
-		sendToPort(IDX_ADDR, addr);	// "addr" < addr
-		sendToPort(IDX_RW, 1);		// "rw" < 1
-		return data;
-	}
-
-	inline void storeData(u16 addr, u8 value) {
-		sendToPort(IDX_ADDR, addr);	// "addr"  < addr
-		sendToPort(IDX_DATA, value);	// "data"  < value
-		sendToPort(IDX_RW, 0);		// "store" < 0
-	}
+	u8 loadData(u16 addr);
+	void storeData(u16 addr, u8 value);
+	void oamDMAWrite(u8 base);
 
 	inline void pushStack(u8 value) {
 		storeData(0x0100 + sp, value);

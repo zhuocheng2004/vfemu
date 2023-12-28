@@ -77,6 +77,34 @@ Status NESCT01Module::data_receive(Module* receiver, u64 data) {
 }
 
 
+u8 NESCT01Module::loadData(u16 addr) {
+	sendToPort(IDX_ADDR, addr);	// "addr" < addr
+	sendToPort(IDX_RW, 1);		// "rw" < 1
+	return data;
+}
+
+void NESCT01Module::storeData(u16 addr, u8 value) {
+	if (addr == 0x4014) {
+		oamDMAWrite(value);
+		return;
+	}
+	sendToPort(IDX_ADDR, addr);	// "addr"  < addr
+	sendToPort(IDX_DATA, value);	// "data"  < value
+	sendToPort(IDX_RW, 0);		// "store" < 0
+}
+
+void NESCT01Module::oamDMAWrite(u8 base) {
+	// set target oam address to zero
+	storeData(0x2003, 0x00);
+
+	// write all oam data
+	u16 addr = base << 8;
+	for (int i = 0; i < 0x100; i++) {
+		storeData(0x2004, loadData(addr++));
+	}
+}
+
+
 u8 NESCT01Module::adjustZ(u8 v) {
 	if (v == 0)
 		p |= MSK_ZERO;

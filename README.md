@@ -26,6 +26,7 @@ Go to the root directory of this project, and then do
 mkdir build
 cd build/
 cmake ..
+make
 ```
 
 And then you can run examples in this way
